@@ -1,0 +1,89 @@
+{
+  "name": "mcp-testing-framework",
+  "version": "1.0.7",
+  "description": "Testing framework for MCP",
+  "main": "lib/index.js",
+  "type": "commonjs",
+  "types": "lib/index.d.ts",
+  "bin": {
+    "mcp-testing-framework": "bin/mcp-testing-framework",
+    "mctest": "bin/mcp-testing-framework"
+  },
+  "files": [
+    "lib/**/*",
+    "LICENSE"
+  ],
+  "scripts": {
+    "test": "heft test --clean",
+    "eslint": "eslint --no-eslintrc -c .eslintrc.json --fix '**/src/*.{js,jsx,ts,tsx}'",
+    "eslint:ci": "eslint --no-eslintrc -c .eslintrc.json '**/src/*.{js,jsx,ts,tsx}'",
+    "prettier": "prettier '**/{examples,src,__tests__,website}/**/*.{js,jsx,ts,tsx,md}' --write",
+    "prettier:ci": "prettier '**/{examples,src,__tests__,website}/**/*.{js,jsx,ts,tsx,md}' --list-different",
+    "typecheck": "tsc --noEmit",
+    "build": "heft build --clean",
+    "prepublishOnly": "heft build --clean"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/L-Qun/mcp-testing-framework"
+  },
+  "prettier": {
+    "semi": false,
+    "singleQuote": true
+  },
+  "keywords": [
+    "mcp",
+    "model-context-protocol",
+    "testing",
+    "framework",
+    "sse",
+    "stdio"
+  ],
+  "author": "L-Qun",
+  "license": "MIT",
+  "bugs": {
+    "url": "https://github.com/L-Qun/mcp-testing-framework/issues"
+  },
+  "homepage": "https://github.com/L-Qun/mcp-testing-framework#readme",
+  "devDependencies": {
+    "@rushstack/eslint-config": "^3.6.2",
+    "@rushstack/eslint-patch": "^1.7.2",
+    "@rushstack/heft": "^0.65.1",
+    "@rushstack/heft-node-rig": "^2.4.5",
+    "@rushstack/node-core-library": "^3.66.1",
+    "@types/express": "^5.0.1",
+    "@types/heft-jest": "1.0.6",
+    "@types/js-yaml": "^4.0.9",
+    "@types/lodash": "^4.17.16",
+    "@types/node": "^20.14.10",
+    "@types/xml2js": "^0.4.14",
+    "eslint": "~8.7.0",
+    "prettier": "^3.3.2",
+    "@modelcontextprotocol/sdk": "^1.9.0",
+    "zod": "^3.24.2",
+    "typescript": "^5.5.3"
+  },
+  "dependencies": {
+    "js-yaml": "^4.1.0",
+    "@anthropic-ai/sdk": "^0.39.0",
+    "@google/generative-ai": "^0.24.0",
+    "@rushstack/terminal": "^0.15.2",
+    "cli-table3": "^0.6.5",
+    "commander": "^13.1.0",
+    "dotenv": "^16.5.0",
+    "lodash": "^4.17.21",
+    "openai": "^4.93.0",
+    "xml2js": "^0.6.2",
+    "zod-to-json-schema": "^3.24.5"
+  },
+  "peerDependencies": {
+    "@modelcontextprotocol/sdk": "*",
+    "zod": "*"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "publishConfig": {
+    "access": "public"
+  }
+}

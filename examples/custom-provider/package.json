@@ -1,0 +1,17 @@
+{
+  "name": "custom-provider",
+  "version": "1.0.0",
+  "description": "Custom provider example",
+  "main": "index.js",
+  "scripts": {
+    "test": "node src/index.js"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "mcp-testing-framework": "latest",
+    "zod": "^3.24.2",
+    "@modelcontextprotocol/sdk": "^1.9.0"
+  }
+}
