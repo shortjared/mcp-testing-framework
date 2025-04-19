@@ -15,13 +15,14 @@
   ],
   "scripts": {
     "test": "heft test --clean",
-    "eslint": "eslint --no-eslintrc -c .eslintrc.json --fix '**/src/*.{js,jsx,ts,tsx}'",
-    "eslint:ci": "eslint --no-eslintrc -c .eslintrc.json '**/src/*.{js,jsx,ts,tsx}'",
+    "eslint": "eslint --no-eslintrc -c .eslintrc.js --fix '**/src/*.{js,jsx,ts,tsx}'",
+    "eslint:ci": "eslint --no-eslintrc -c .eslintrc.js '**/src/*.{js,jsx,ts,tsx}'",
     "prettier": "prettier '**/{examples,src,__tests__,website}/**/*.{js,jsx,ts,tsx,md}' --write",
     "prettier:ci": "prettier '**/{examples,src,__tests__,website}/**/*.{js,jsx,ts,tsx,md}' --list-different",
     "typecheck": "tsc --noEmit",
     "build": "heft build --clean",
-    "prepublishOnly": "heft build --clean"
+    "prepublishOnly": "heft build --clean",
+    "prepare": "husky"
   },
   "repository": {
     "type": "git",
@@ -59,9 +60,11 @@
     "@types/node": "^20.14.10",
     "@types/xml2js": "^0.4.14",
     "eslint": "~8.7.0",
+    "husky": "^9.1.7",
+    "lint-staged": "^15.5.1",
     "prettier": "^3.3.2",
-    "typescript": "^5.5.3",
     "release-please": "^17.0.0",
+    "typescript": "^5.5.3",
     "zod": "^3.24.2"
   },
   "dependencies": {
@@ -80,6 +83,13 @@
   "peerDependencies": {
     "@modelcontextprotocol/sdk": "*",
     "zod": "*"
+  },
+  "lint-staged": {
+    "**/*.{js,ts,jsx,tsx}": [
+      "pnpm run eslint",
+      "pnpm run prettier"
+    ],
+    "**/*.{json,css,scss,md}": "pnpm run prettier"
   },
   "engines": {
     "node": ">=18"
