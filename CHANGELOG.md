@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.3.3](https://github.com/L-Qun/mcp-testing-framework/compare/v1.3.2...v1.3.3) (2025-04-19)
+
+
+### Bug Fixes
+
+* readme ([ddf1c25](https://github.com/L-Qun/mcp-testing-framework/commit/ddf1c259a014978365f9dd92ed28d1c58f1c29ee))
+
 ## [1.3.2](https://github.com/L-Qun/mcp-testing-framework/compare/v1.3.1...v1.3.2) (2025-04-19)
 
 
