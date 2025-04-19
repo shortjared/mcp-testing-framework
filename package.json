@@ -1,6 +1,6 @@
 {
   "name": "mcp-testing-framework",
-  "version": "1.2.0",
+  "version": "1.2.1",
   "description": "Testing framework for MCP",
   "main": "lib/index.js",
   "type": "commonjs",
