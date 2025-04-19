@@ -15,8 +15,8 @@
   ],
   "scripts": {
     "test": "heft test --clean",
-    "eslint": "eslint --no-eslintrc -c .eslintrc.json --fix '**/src/*.{js,jsx,ts,tsx}'",
-    "eslint:ci": "eslint --no-eslintrc -c .eslintrc.json '**/src/*.{js,jsx,ts,tsx}'",
+    "eslint": "eslint --no-eslintrc -c .eslintrc.js --fix '**/src/*.{js,jsx,ts,tsx}'",
+    "eslint:ci": "eslint --no-eslintrc -c .eslintrc.js '**/src/*.{js,jsx,ts,tsx}'",
     "prettier": "prettier '**/{examples,src,__tests__,website}/**/*.{js,jsx,ts,tsx,md}' --write",
     "prettier:ci": "prettier '**/{examples,src,__tests__,website}/**/*.{js,jsx,ts,tsx,md}' --list-different",
     "typecheck": "tsc --noEmit",
@@ -85,7 +85,11 @@
     "zod": "*"
   },
   "lint-staged": {
-    "**/*.{js,ts,jsx,tsx,json,css,scss,md}": "pnpm run prettier"
+    "**/*.{js,ts,jsx,tsx}": [
+      "pnpm run eslint",
+      "pnpm run prettier"
+    ],
+    "**/*.{json,css,scss,md}": "pnpm run prettier"
   },
   "engines": {
     "node": ">=18"
