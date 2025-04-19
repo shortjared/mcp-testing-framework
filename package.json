@@ -1,6 +1,6 @@
 {
   "name": "mcp-testing-framework",
-  "version": "1.0.7",
+  "version": "1.0.8",
   "description": "Testing framework for MCP",
   "main": "lib/index.js",
   "type": "commonjs",
@@ -60,8 +60,8 @@
     "@types/xml2js": "^0.4.14",
     "eslint": "~8.7.0",
     "prettier": "^3.3.2",
-    "release-it": "^19.0.1",
     "typescript": "^5.5.3",
+    "release-please": "^17.0.0",
     "zod": "^3.24.2"
   },
   "dependencies": {
