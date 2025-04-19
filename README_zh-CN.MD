@@ -64,15 +64,6 @@ modelsToTest:
   - deepseek:deepseek-chat
   - custom:my-model # 自定义提供者示例
 
-# 测试用例定义
-testRound: 5
-passThreshold: 0.8
-
-# 需要测试的模型列表
-modelsToTest:
-  - openai:gpt-4o
-  - openai:gpt-4o-mini
-
 # 测试 Cases
 testCases:
   - prompt: "帮我计算一下 bmi 指数，我的重量是90kg，我的身高是180cm"

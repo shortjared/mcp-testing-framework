@@ -65,15 +65,6 @@ modelsToTest:
   - custom:my-model  # Custom provider example
 
 # Test case definitions
-testRound: 5
-passThreshold: 0.8
-
-# List of models to test
-modelsToTest:
-  - openai:gpt-4o
-  - openai:gpt-4o-mini
-
-# Test case definitions
 testCases:
   - prompt: "Help me calculate my BMI index, my weight is 90kg, my height is 180cm"
     expectedOutput:
