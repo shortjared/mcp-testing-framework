@@ -1,5 +1,6 @@
 import { Client } from '@modelcontextprotocol/sdk/client/index.js'
 import { SSEClientTransport } from '@modelcontextprotocol/sdk/client/sse.js'
+import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js'
 import { StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio.js'
 import { ToolSchema } from '@modelcontextprotocol/sdk/types.js'
 import { z } from 'zod'
@@ -17,7 +18,10 @@ export interface IServerTool {
 
 export interface IMCPConnection {
   client: Client
-  transport: StdioClientTransport | SSEClientTransport
+  transport:
+    | StdioClientTransport
+    | SSEClientTransport
+    | StreamableHTTPClientTransport
   server: {
     name: string
     config: IMcpServer
@@ -39,7 +43,10 @@ export class McpHub {
       version: VERSION,
     })
 
-    let transport: StdioClientTransport | SSEClientTransport
+    let transport:
+      | StdioClientTransport
+      | SSEClientTransport
+      | StreamableHTTPClientTransport
 
     if (server.command) {
       transport = new StdioClientTransport({
@@ -47,8 +54,10 @@ export class McpHub {
         args: server.args,
         env: server.env,
       })
+    } else if (server.url && server.url.includes('sse')) {
+      transport = new SSEClientTransport(new URL(server.url))
     } else {
-      transport = new SSEClientTransport(new URL(server.url!))
+      transport = new StreamableHTTPClientTransport(new URL(server.url!))
     }
 
     const connection: IMCPConnection = {
