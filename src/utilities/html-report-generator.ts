@@ -388,6 +388,17 @@ export class HtmlReportGenerator {
             border: 1px solid #e9ecef;
         }
 
+        .expected-column .diff-line, .actual-column .diff-line {
+            padding: 2px 8px;
+            font-family: 'Monaco', 'Consolas', 'Courier New', monospace;
+            font-size: 0.85rem;
+            line-height: 1.4;
+            white-space: pre-wrap;
+            margin: 0;
+            border: none;
+            border-radius: 0;
+        }
+
         .expected-column h5 {
             color: #28a745;
             margin-bottom: 10px;
@@ -438,6 +449,12 @@ export class HtmlReportGenerator {
             color: #6c757d;
         }
 
+        .diff-placeholder {
+            background-color: #f8f9fa;
+            height: 1.4em;
+            opacity: 0.3;
+        }
+
         .diff-summary {
             background: #fff3cd;
             border: 1px solid #ffeaa7;
@@ -480,6 +497,36 @@ export class HtmlReportGenerator {
             font-size: 0.9rem;
             overflow-x: auto;
             white-space: pre-wrap;
+        }
+
+        .code-block.json {
+            background: #1e1e1e;
+            color: #d4d4d4;
+            border: 1px solid #3c3c3c;
+        }
+
+        .json-key {
+            color: #9cdcfe;
+        }
+
+        .json-string {
+            color: #ce9178;
+        }
+
+        .json-number {
+            color: #b5cea8;
+        }
+
+        .json-boolean {
+            color: #569cd6;
+        }
+
+        .json-null {
+            color: #569cd6;
+        }
+
+        .json-punctuation {
+            color: #d4d4d4;
         }
 
         .filters {
@@ -753,8 +800,26 @@ export class HtmlReportGenerator {
 
     // Tool Usage Comparison with Diff (Expected vs Actual)
     if (detail.response || expectedToolUsage) {
-      const diffResult = this._generateDiff(expectedToolUsage, detail.response)
+      // Canonicalize both expected and actual tool usage for comparison
+      const canonicalExpected = this._canonicalizeToolUsage(expectedToolUsage)
+      const canonicalActual = this._canonicalizeToolUsage(detail.response)
+
+      const diffResult = this._generateDiff(canonicalExpected, canonicalActual)
       const viewId = Math.random().toString(36).substr(2, 9)
+
+      // Generate diff-highlighted JSON for side-by-side comparison
+      const diffHighlighted = this._generateDiffHighlightedJson(
+        canonicalExpected,
+        canonicalActual,
+      )
+
+      // Fallback to regular highlighting if no actual response
+      const highlightedExpected = detail.response
+        ? diffHighlighted.expectedHtml
+        : this._highlightJson(JSON.stringify(canonicalExpected, null, 2))
+      const highlightedActual = detail.response
+        ? diffHighlighted.actualHtml
+        : null
 
       content += `
         <div class="tool-usage-comparison">
@@ -778,13 +843,13 @@ export class HtmlReportGenerator {
                 <div class="comparison-grid">
                     <div class="expected-column">
                         <h5>📋 Expected Tool Usage</h5>
-                        <div class="code-block">${JSON.stringify(expectedToolUsage, null, 2)}</div>
+                        <div class="code-block json">${highlightedExpected}</div>
                     </div>
                     <div class="actual-column">
                         <h5>📤 Actual Tool Usage (Model Response)</h5>
                         ${
-                          detail.response
-                            ? `<div class="code-block">${JSON.stringify(detail.response, null, 2)}</div>`
+                          highlightedActual
+                            ? `<div class="code-block json">${highlightedActual}</div>`
                             : `<div class="code-block error">No response generated</div>`
                         }
                     </div>
@@ -805,11 +870,11 @@ export class HtmlReportGenerator {
                     <div class="comparison-grid">
                         <div class="expected-column">
                             <h5>📋 Expected Tool Usage</h5>
-                            <div class="code-block">${JSON.stringify(expectedToolUsage, null, 2)}</div>
+                            <div class="code-block json">${highlightedExpected}</div>
                         </div>
                         <div class="actual-column">
                             <h5>📤 Actual Tool Usage (Model Response)</h5>
-                            <div class="code-block">${JSON.stringify(detail.response, null, 2)}</div>
+                            <div class="code-block json">${highlightedActual}</div>
                         </div>
                     </div>
                 </div>
@@ -1063,6 +1128,134 @@ export class HtmlReportGenerator {
       isMatch: false,
       diffHtml,
       summary,
+    }
+  }
+
+  /**
+   * Canonicalize tool usage object by sorting parameters and standardizing format
+   */
+  private _canonicalizeToolUsage(toolUsage: any): any {
+    if (!toolUsage || typeof toolUsage !== 'object') {
+      return toolUsage
+    }
+
+    const canonicalized = { ...toolUsage }
+
+    // If parameters exist, sort them by key
+    if (
+      canonicalized.parameters &&
+      typeof canonicalized.parameters === 'object'
+    ) {
+      const sortedParams: any = {}
+      Object.keys(canonicalized.parameters)
+        .sort()
+        .forEach((key) => {
+          sortedParams[key] = canonicalized.parameters[key]
+        })
+      canonicalized.parameters = sortedParams
+    }
+
+    return canonicalized
+  }
+
+  /**
+   * Apply JSON syntax highlighting to a JSON string
+   */
+  private _highlightJson(jsonString: string): string {
+    if (!jsonString) return ''
+
+    try {
+      // Parse and re-stringify to ensure consistent formatting
+      const parsed = JSON.parse(jsonString)
+      const formatted = JSON.stringify(parsed, null, 2)
+
+      return formatted
+        .replace(/("([^"\\]|\\.)*")\s*:/g, '<span class="json-key">$1</span>:')
+        .replace(
+          /:\s*("([^"\\]|\\.)*")/g,
+          ': <span class="json-string">$1</span>',
+        )
+        .replace(
+          /:\s*(\d+(?:\.\d+)?)/g,
+          ': <span class="json-number">$1</span>',
+        )
+        .replace(/:\s*(true|false)/g, ': <span class="json-boolean">$1</span>')
+        .replace(/:\s*(null)/g, ': <span class="json-null">$1</span>')
+        .replace(/([{}[\],])/g, '<span class="json-punctuation">$1</span>')
+    } catch (e) {
+      // If JSON parsing fails, return original with basic escaping
+      return this._escapeHtml(jsonString)
+    }
+  }
+
+  /**
+   * Generate diff-highlighted JSON for side-by-side comparison
+   */
+  private _generateDiffHighlightedJson(
+    expected: any,
+    actual: any,
+  ): { expectedHtml: string; actualHtml: string } {
+    if (!expected && !actual) {
+      return { expectedHtml: '', actualHtml: '' }
+    }
+
+    const expectedStr = expected ? JSON.stringify(expected, null, 2) : ''
+    const actualStr = actual ? JSON.stringify(actual, null, 2) : ''
+
+    // If they're the same, just return syntax highlighted versions
+    if (expectedStr === actualStr) {
+      return {
+        expectedHtml: this._highlightJson(expectedStr),
+        actualHtml: this._highlightJson(actualStr),
+      }
+    }
+
+    // Generate line-by-line diff
+    const diff = Diff.diffLines(expectedStr, actualStr)
+
+    const expectedLines: string[] = []
+    const actualLines: string[] = []
+
+    diff.forEach((part) => {
+      const lines = part.value.split('\n')
+
+      // Remove last empty line if it exists
+      if (lines[lines.length - 1] === '') {
+        lines.pop()
+      }
+
+      lines.forEach((line) => {
+        if (part.removed) {
+          // Line exists in expected but not in actual
+          expectedLines.push(
+            `<div class="diff-line diff-removed">${this._escapeHtml(line)}</div>`,
+          )
+          actualLines.push(`<div class="diff-line diff-placeholder"></div>`)
+        } else if (part.added) {
+          // Line exists in actual but not in expected
+          expectedLines.push(`<div class="diff-line diff-placeholder"></div>`)
+          actualLines.push(
+            `<div class="diff-line diff-added">${this._escapeHtml(line)}</div>`,
+          )
+        } else {
+          // Line exists in both (context)
+          const highlightedLine = this._highlightJson(line + '\n').replace(
+            '\n',
+            '',
+          )
+          expectedLines.push(
+            `<div class="diff-line diff-context">${highlightedLine}</div>`,
+          )
+          actualLines.push(
+            `<div class="diff-line diff-context">${highlightedLine}</div>`,
+          )
+        }
+      })
+    })
+
+    return {
+      expectedHtml: expectedLines.join(''),
+      actualHtml: actualLines.join(''),
     }
   }
 }

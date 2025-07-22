@@ -26,6 +26,34 @@ import { ConcurrencyController } from '../../utilities/concurrency-controller'
 import { TableFormatter } from '../../utilities/table-formatter'
 import { GradingService } from '../../utilities/grading-service'
 
+/**
+ * Canonicalize tool usage object by sorting parameters and standardizing format
+ * This ensures that parameter order doesn't affect comparison results
+ */
+function canonicalizeToolUsage(toolUsage: any): any {
+  if (!toolUsage || typeof toolUsage !== 'object') {
+    return toolUsage
+  }
+
+  const canonicalized = { ...toolUsage }
+
+  // If parameters exist, sort them by key
+  if (
+    canonicalized.parameters &&
+    typeof canonicalized.parameters === 'object'
+  ) {
+    const sortedParams: any = {}
+    Object.keys(canonicalized.parameters)
+      .sort()
+      .forEach((key) => {
+        sortedParams[key] = canonicalized.parameters[key]
+      })
+    canonicalized.parameters = sortedParams
+  }
+
+  return canonicalized
+}
+
 export class TestManager {
   private _testRound: number
   private _passThreshold: number
@@ -167,7 +195,10 @@ export class TestManager {
         )
       }
 
-      const toolUsagePassed = isEqual(expectedToolUsage, parsedResponse)
+      // Canonicalize both expected and actual tool usage for comparison
+      const canonicalExpected = canonicalizeToolUsage(expectedToolUsage)
+      const canonicalActual = canonicalizeToolUsage(parsedResponse)
+      const toolUsagePassed = isEqual(canonicalExpected, canonicalActual)
 
       // Step 3: Execute tool if enabled OR if expectedResults are defined (which requires execution)
       const shouldExecuteTools =
