@@ -36,6 +36,7 @@ export class TestManager {
   private _mcpServers: IMcpServer[]
   private _concurrencyController: ConcurrencyController
   private _tableFormatter: TableFormatter
+  private _generateHtml: boolean
 
   private _mcpHub: McpHub
   private _mcpReport: MCPReport
@@ -43,11 +44,13 @@ export class TestManager {
   public constructor(
     config: IMcpTestingFrameworkConfig,
     promptFilter?: string,
+    generateHtml: boolean = false,
   ) {
     this._testRound = config.testRound ?? 10
     this._passThreshold = config.passThreshold ?? 0
     this._executeTools = config.executeTools ?? false
     this._gradingPrompt = config.gradingPrompt
+    this._generateHtml = generateHtml
     this._modelsToTest = config.modelsToTest
     this._testCases = promptFilter
       ? this._filterTestCases(config.testCases, promptFilter)
@@ -329,7 +332,11 @@ Please provide a helpful, natural language response to the user based on these r
       logger.writeLine('\nResults:')
       const isAllPass = this._generateTable(evaluateResults)
 
-      await this._mcpReport.generateReport(evaluateResults, isAllPass)
+      await this._mcpReport.generateReport(
+        evaluateResults,
+        isAllPass,
+        this._generateHtml,
+      )
 
       if (isAllPass) {
         logger.writeLine(Colorize.green('All tests passed!\n'))
@@ -350,18 +357,20 @@ Please provide a helpful, natural language response to the user based on these r
 
   public static async loadFromConfiguration(
     promptFilter?: string,
+    generateHtml?: boolean,
   ): Promise<TestManager> {
     const config = await readConfig()
     if (!config) {
       throw new Error('Cannot find configuration file')
     }
-    return new TestManager(config, promptFilter)
+    return new TestManager(config, promptFilter, generateHtml)
   }
 
   public static async loadFromDirectory(
     directory: string = process.cwd(),
     prefix?: string,
     promptFilter?: string,
+    generateHtml?: boolean,
   ): Promise<TestManager[]> {
     const suites = await readConfigs(directory, prefix)
 
@@ -373,13 +382,16 @@ Please provide a helpful, natural language response to the user based on these r
       )
     }
 
-    return suites.map((suite) => new TestManager(suite.config, promptFilter))
+    return suites.map(
+      (suite) => new TestManager(suite.config, promptFilter, generateHtml),
+    )
   }
 
   public static async executeMultiple(
     directory: string = process.cwd(),
     prefix?: string,
     promptFilter?: string,
+    generateHtml?: boolean,
   ): Promise<IMultiSuiteResult> {
     const suites = await readConfigs(directory, prefix)
 
@@ -404,7 +416,11 @@ Please provide a helpful, natural language response to the user based on these r
       )
       logger.writeLine(`File: ${suite.filePath}`)
 
-      const testManager = new TestManager(suite.config, promptFilter)
+      const testManager = new TestManager(
+        suite.config,
+        promptFilter,
+        generateHtml,
+      )
 
       // Skip suite if no test cases match the filter
       if (testManager._testCases.length === 0) {

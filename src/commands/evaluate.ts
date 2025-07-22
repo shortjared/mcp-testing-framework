@@ -9,6 +9,7 @@ import { logger } from '../utilities/logger'
 export async function evaluateTests(
   prefix?: string,
   promptFilter?: string,
+  generateHtml?: boolean,
 ): Promise<void> {
   try {
     let message = 'Running evaluation tests'
@@ -24,6 +25,7 @@ export async function evaluateTests(
       process.cwd(),
       prefix,
       promptFilter,
+      generateHtml,
     )
 
     if (result.overallPassed) {

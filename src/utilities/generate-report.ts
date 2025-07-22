@@ -3,6 +3,7 @@ import path from 'path'
 
 import { IEvaluateResult } from '../types/evaluate'
 import { logger } from './logger'
+import { HtmlReportGenerator } from './html-report-generator'
 
 export interface ITestReport {
   timestamp: string
@@ -70,6 +71,7 @@ export class MCPReport {
   public async generateReport(
     evaluateResults: IEvaluateResult[],
     isAllPass: boolean,
+    generateHtml: boolean = false,
   ): Promise<string> {
     if (!(await FileSystem.existsAsync(this._options.reportDirectory))) {
       await FileSystem.ensureFolderAsync(this._options.reportDirectory)
@@ -163,7 +165,15 @@ export class MCPReport {
 
     await FileSystem.writeFileAsync(reportPath, JSON.stringify(report, null, 2))
 
-    logger.writeLine(`\nDetailed test report saved to: ${reportPath}\n`)
+    logger.writeLine(`\nDetailed test report saved to: ${reportPath}`)
+
+    // Generate HTML report if requested
+    if (generateHtml) {
+      const htmlGenerator = new HtmlReportGenerator(report)
+      await htmlGenerator.generateHtmlReport(this._options.reportDirectory)
+    }
+
+    logger.writeLine('')
 
     return reportPath
   }

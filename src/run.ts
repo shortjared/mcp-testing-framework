@@ -34,8 +34,9 @@ program
     '--prompt <filter>',
     'Filter test cases by prompt content (case-insensitive contains)',
   )
-  .action((prefix?: string, options?: { prompt?: string }) =>
-    evaluateTests(prefix, options?.prompt),
+  .option('--html', 'Generate HTML report in addition to JSON report')
+  .action((prefix?: string, options?: { prompt?: string; html?: boolean }) =>
+    evaluateTests(prefix, options?.prompt, options?.html),
   )
 
 // Run the program
