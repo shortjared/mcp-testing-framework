@@ -1,7 +1,21 @@
+export interface IToolExecutionResult {
+  success: boolean
+  content?: any
+  error?: string
+}
+
+export interface IGradingResult {
+  grade: 'PASS' | 'FAIL'
+  reasoning: string
+  finalMessage?: string
+}
+
 export interface IModelResponse {
   passed: boolean
   response?: any
   error?: string
+  toolExecutionResult?: IToolExecutionResult
+  gradingResult?: IGradingResult
 }
 
 export interface IEvaluateResult {
@@ -15,16 +29,25 @@ export interface IModelSpec {
   model: string
 }
 
-export interface IExpectedOutput {
+export interface IExpectedToolUsage {
   serverName: string
   toolName: string
-  parameters: Record<string, string>
+  parameters: Record<string, any>
+}
+
+export interface IExpectedResults {
+  content: string
 }
 
 export interface ITestCase {
   prompt: string
-  expectedOutput: IExpectedOutput
+  expectedToolUsage: IExpectedToolUsage
+  expectedResults?: IExpectedResults
+  gradingPrompt?: string
 }
+
+// Backward compatibility - deprecated
+export interface IExpectedOutput extends IExpectedToolUsage {}
 
 export interface IMcpServer {
   name: string
@@ -32,12 +55,22 @@ export interface IMcpServer {
   args?: string[]
   url?: string
   env?: Record<string, string>
+  headers?: Record<string, string>
+}
+
+export interface IRetryConfig {
+  maxRetries?: number
+  baseDelay?: number
+  maxDelay?: number
 }
 
 export interface IMcpTestingFrameworkConfig {
   testRound?: number
   passThreshold?: number
   concurrencyLimit?: number
+  executeTools?: boolean
+  gradingPrompt?: string
+  retryConfig?: IRetryConfig
   modelsToTest: string[]
   testCases: ITestCase[]
   mcpServers: IMcpServer[]

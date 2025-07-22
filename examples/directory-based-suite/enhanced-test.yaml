@@ -1,0 +1,48 @@
+# Enhanced MCP Testing Framework Configuration with Tool Execution and AI Grading
+
+# Number of rounds for each model test execution
+testRound: 2
+
+# Minimum threshold for passing tests (decimal between 0-1)
+passThreshold: 0.8
+
+# Enable actual tool execution (new feature)
+executeTools: false  # Set to false for testing since we don't have real MCP servers
+
+# Suite-level grading prompt for AI-powered result validation
+gradingPrompt: |
+  You are evaluating MCP tool execution results. Focus on whether the actual results 
+  provide the same information and accuracy as the expected results. Be somewhat lenient 
+  with formatting differences but strict about factual correctness.
+
+# List of models to test
+modelsToTest:
+  - openai:gpt-4o-mini
+
+# Test case definitions using new expectedToolUsage format
+testCases:
+  - prompt: 'Help me calculate my BMI index, my weight is 90kg, my height is 180cm'
+    expectedToolUsage:  # Renamed from expectedOutput
+      serverName: 'example-server'
+      toolName: 'calculate-bmi'
+      parameters:
+        weightKg: 90
+        heightM: 1.8
+    expectedResults:  # New: expected tool execution results
+      content: 'BMI: 27.78 (overweight category)'
+    gradingPrompt: |  # Test-level grading prompt overrides suite-level
+      Evaluate if the BMI calculation is correct. 90kg / (1.8m)² = 27.78. 
+      Accept any response that includes this calculation result.
+
+  - prompt: 'What is the current time in Tokyo?'
+    expectedToolUsage:
+      serverName: 'example-server' 
+      toolName: 'get-current-time'
+      parameters:
+        timezone: 'Asia/Tokyo'
+    # No expectedResults - will only validate tool usage format
+
+# MCP server configuration
+mcpServers:
+  - name: 'example-server'
+    url: 'http://example.mcp-server.com/sse'

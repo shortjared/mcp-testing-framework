@@ -1,7 +1,7 @@
 import { FileSystem } from '@rushstack/node-core-library'
 import path from 'path'
 
-import { IEvaluateResult, IMcpTestingFrameworkConfig } from '../types/evaluate'
+import { IEvaluateResult } from '../types/evaluate'
 import { logger } from './logger'
 
 export interface ITestReport {
@@ -10,10 +10,13 @@ export interface ITestReport {
     testRound: number
     passThreshold: number
     modelsToTest: string[]
+    executeTools: boolean
+    gradingPrompt?: string
   }
   results: Array<{
     prompt: string
-    expectedOutput: any
+    expectedToolUsage: any
+    expectedResults?: any
     modelResults: Array<{
       model: string
       passRate: number
@@ -22,6 +25,16 @@ export interface ITestReport {
         passed: boolean
         response?: any
         error?: string
+        toolExecutionResult?: {
+          success: boolean
+          content?: any
+          error?: string
+        }
+        gradingResult?: {
+          grade: 'PASS' | 'FAIL'
+          reasoning: string
+          finalMessage?: string
+        }
       }>
     }>
   }>
@@ -30,12 +43,21 @@ export interface ITestReport {
     totalTests: number
     passedTests: number
     failedTests: number
+    toolExecutionTests?: number
+    gradedTests?: number
   }
 }
 
-export interface IMCPReportOptions
-  extends Required<IMcpTestingFrameworkConfig> {
+export interface IMCPReportOptions {
   reportDirectory: string
+  testRound: number
+  passThreshold: number
+  concurrencyLimit: number
+  executeTools: boolean
+  gradingPrompt?: string
+  modelsToTest: string[]
+  testCases: any[]
+  mcpServers: any[]
 }
 
 export class MCPReport {
@@ -60,12 +82,17 @@ export class MCPReport {
     let passedTests = 0
     let totalTests = 0
 
+    let toolExecutionTests = 0
+    let gradedTests = 0
+
     const report: ITestReport = {
       timestamp,
       config: {
         testRound: this._options.testRound,
         passThreshold: this._options.passThreshold,
         modelsToTest: this._options.modelsToTest,
+        executeTools: this._options.executeTools || false,
+        gradingPrompt: this._options.gradingPrompt,
       },
       results: [],
       summary: {
@@ -73,6 +100,8 @@ export class MCPReport {
         totalTests: 0,
         passedTests: 0,
         failedTests: 0,
+        toolExecutionTests: 0,
+        gradedTests: 0,
       },
     }
 
@@ -83,12 +112,26 @@ export class MCPReport {
       const modelResults = result.rates.map((rate, modelIndex) => {
         const modelName = this._options.modelsToTest[modelIndex]
         const details =
-          result.modelResponses?.[modelIndex]?.map((resp, roundIndex) => ({
-            round: roundIndex + 1,
-            passed: resp.passed,
-            error: resp.error,
-            response: resp.response,
-          })) || []
+          result.modelResponses?.[modelIndex]?.map((resp, roundIndex) => {
+            const detail: any = {
+              round: roundIndex + 1,
+              passed: resp.passed,
+              error: resp.error,
+              response: resp.response,
+            }
+
+            if (resp.toolExecutionResult) {
+              detail.toolExecutionResult = resp.toolExecutionResult
+              toolExecutionTests++
+            }
+
+            if (resp.gradingResult) {
+              detail.gradingResult = resp.gradingResult
+              gradedTests++
+            }
+
+            return detail
+          }) || []
 
         if (rate >= this._options.passThreshold) {
           passedTests++
@@ -104,7 +147,10 @@ export class MCPReport {
 
       report.results.push({
         prompt: result.prompt,
-        expectedOutput: testCase.expectedOutput,
+        expectedToolUsage:
+          (testCase as any).expectedToolUsage ||
+          (testCase as any).expectedOutput,
+        expectedResults: testCase.expectedResults,
         modelResults,
       })
     }
@@ -112,6 +158,8 @@ export class MCPReport {
     report.summary.totalTests = totalTests
     report.summary.passedTests = passedTests
     report.summary.failedTests = totalTests - passedTests
+    report.summary.toolExecutionTests = toolExecutionTests
+    report.summary.gradedTests = gradedTests
 
     await FileSystem.writeFileAsync(reportPath, JSON.stringify(report, null, 2))
 

@@ -6,15 +6,25 @@ import { logger } from '../utilities/logger'
 /**
  * Execute tests and evaluate results
  */
-export async function evaluateTests(prefix?: string): Promise<void> {
+export async function evaluateTests(
+  prefix?: string,
+  promptFilter?: string,
+): Promise<void> {
   try {
-    logger.writeLine(
-      prefix
-        ? `Running evaluation tests with prefix filter: '${prefix}'...\n`
-        : 'Running evaluation tests...\n',
-    )
+    let message = 'Running evaluation tests'
+    if (prefix) {
+      message += ` with prefix filter: '${prefix}'`
+    }
+    if (promptFilter) {
+      message += ` with prompt filter: '${promptFilter}'`
+    }
+    logger.writeLine(`${message}...\n`)
 
-    const result = await TestManager.executeMultiple(process.cwd(), prefix)
+    const result = await TestManager.executeMultiple(
+      process.cwd(),
+      prefix,
+      promptFilter,
+    )
 
     if (result.overallPassed) {
       logger.writeLine(

@@ -14,6 +14,7 @@ export class AnthropicProvider implements IApiProvider {
     this._config = options.config
     this._client = new Anthropic({
       apiKey: this.apiKey,
+      maxRetries: 8, // Increased from default 2 for testing scenarios
     })
   }
 

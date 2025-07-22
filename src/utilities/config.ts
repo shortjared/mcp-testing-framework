@@ -3,6 +3,7 @@ import path from 'path'
 import yaml from 'js-yaml'
 
 import { logger } from './logger'
+import { expandEnvironmentVariablesInObject } from './env-expansion'
 import {
   IMcpTestingFrameworkConfig,
   IModelSpec,
@@ -48,13 +49,111 @@ export async function findConfigFile(
  * Validates if a YAML content is a valid MCP Testing Framework configuration
  */
 function isValidMcpConfig(content: any): content is IMcpTestingFrameworkConfig {
-  return (
-    content &&
-    typeof content === 'object' &&
-    Array.isArray(content.modelsToTest) &&
-    Array.isArray(content.testCases) &&
-    Array.isArray(content.mcpServers)
-  )
+  if (!content || typeof content !== 'object') {
+    return false
+  }
+
+  // Check required arrays
+  if (
+    !Array.isArray(content.modelsToTest) ||
+    !Array.isArray(content.testCases) ||
+    !Array.isArray(content.mcpServers)
+  ) {
+    return false
+  }
+
+  // Validate test cases have required fields (with backward compatibility)
+  for (const testCase of content.testCases) {
+    if (!testCase.prompt) {
+      return false
+    }
+
+    // Must have either expectedToolUsage or expectedOutput (backward compatibility)
+    const hasExpectedToolUsage =
+      testCase.expectedToolUsage &&
+      typeof testCase.expectedToolUsage === 'object'
+    const hasExpectedOutput =
+      testCase.expectedOutput && typeof testCase.expectedOutput === 'object'
+
+    if (!hasExpectedToolUsage && !hasExpectedOutput) {
+      return false
+    }
+
+    // If expectedResults provided, validate it has content
+    if (
+      testCase.expectedResults &&
+      (!testCase.expectedResults.content ||
+        typeof testCase.expectedResults.content !== 'string')
+    ) {
+      return false
+    }
+
+    // Validate grading prompt if provided
+    if (testCase.gradingPrompt && typeof testCase.gradingPrompt !== 'string') {
+      return false
+    }
+  }
+
+  // Validate MCP servers
+  for (const server of content.mcpServers) {
+    if (!server.name || typeof server.name !== 'string') {
+      return false
+    }
+
+    // Must have either command or url
+    if (!server.command && !server.url) {
+      return false
+    }
+
+    // Validate headers if provided
+    if (server.headers && typeof server.headers !== 'object') {
+      return false
+    }
+  }
+
+  // Validate optional top-level fields
+  if (
+    content.executeTools !== undefined &&
+    typeof content.executeTools !== 'boolean'
+  ) {
+    return false
+  }
+
+  if (
+    content.gradingPrompt !== undefined &&
+    typeof content.gradingPrompt !== 'string'
+  ) {
+    return false
+  }
+
+  // Validate retry config if provided
+  if (content.retryConfig !== undefined) {
+    if (typeof content.retryConfig !== 'object') {
+      return false
+    }
+
+    const retry = content.retryConfig
+    if (
+      retry.maxRetries !== undefined &&
+      (typeof retry.maxRetries !== 'number' || retry.maxRetries < 0)
+    ) {
+      return false
+    }
+    if (
+      retry.baseDelay !== undefined &&
+      (typeof retry.baseDelay !== 'number' || retry.baseDelay < 0)
+    ) {
+      return false
+    }
+    if (
+      retry.maxDelay !== undefined &&
+      (typeof retry.maxDelay !== 'number' || retry.maxDelay < 0)
+    ) {
+      return false
+    }
+  }
+
+  return true
 }
 
 /**
@@ -131,10 +230,15 @@ export async function readConfigs(
           .replace(/\.(yaml|yml)$/, '')
           .replace(/[\/\\]/g, '-')
 
+        // Expand environment variables in the entire config
+        const expandedConfig = expandEnvironmentVariablesInObject(
+          config,
+        ) as IMcpTestingFrameworkConfig
+
         suites.push({
           name: suiteName,
           filePath,
-          config: config as IMcpTestingFrameworkConfig,
+          config: expandedConfig,
         })
       } else {
         logger.writeWarningLine(
@@ -168,5 +272,7 @@ export async function readConfig(
 
   const content = await FileSystem.readFileAsync(filePath)
   const config = yaml.load(content) as IMcpTestingFrameworkConfig
-  return config
+
+  // Expand environment variables in the config
+  return expandEnvironmentVariablesInObject(config)
 }

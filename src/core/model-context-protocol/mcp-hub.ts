@@ -8,7 +8,7 @@ import { Async } from '@rushstack/node-core-library'
 
 import { VERSION } from '../../constants'
 import { logger } from '../../utilities/logger'
-import { IMcpServer } from '../../types/evaluate'
+import { IMcpServer, IToolExecutionResult } from '../../types/evaluate'
 
 export type Tool = z.infer<typeof ToolSchema>
 
@@ -55,9 +55,19 @@ export class McpHub {
         env: server.env,
       })
     } else if (server.url && server.url.includes('sse')) {
-      transport = new SSEClientTransport(new URL(server.url))
+      const url = new URL(server.url)
+      const options: any = {}
+      if (server.headers) {
+        options.requestInit = { headers: server.headers }
+      }
+      transport = new SSEClientTransport(url, options)
     } else {
-      transport = new StreamableHTTPClientTransport(new URL(server.url!))
+      const url = new URL(server.url!)
+      const options: any = {}
+      if (server.headers) {
+        options.requestInit = { headers: server.headers }
+      }
+      transport = new StreamableHTTPClientTransport(url, options)
     }
 
     const connection: IMCPConnection = {
@@ -110,7 +120,63 @@ export class McpHub {
     }
   }
 
-  public async listAllServerTools(): Promise<IServerTool> {
+  public async executeTool(
+    serverName: string,
+    toolName: string,
+    parameters: Record<string, any>,
+  ): Promise<IToolExecutionResult> {
+    const connection = this._connections.find(
+      (c) => c.server.name === serverName,
+    )
+
+    if (!connection) {
+      return {
+        success: false,
+        error: `Server ${serverName} not connected`,
+      }
+    }
+
+    try {
+      const result = await connection.client.callTool({
+        name: toolName,
+        arguments: parameters,
+      })
+
+      return {
+        success: true,
+        content: result.content,
+      }
+    } catch (error) {
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : String(error),
+      }
+    }
+  }
+
+  public async connectAllServers(): Promise<void> {
+    await Async.forEachAsync(this._mcpServers, async (server) => {
+      try {
+        await this._connectToServer(server)
+        logger.writeLine(`Connected to server: ${server.name}`)
+      } catch (error) {
+        logger.writeErrorLine(
+          `Failed to connect to server ${server.name}:`,
+          error,
+        )
+      }
+    })
+  }
+
+  public async disconnectAllServers(): Promise<void> {
+    await Async.forEachAsync(this._mcpServers, async (server) => {
+      await this._deleteConnect(server.name)
+    })
+  }
+
+  public async listAllServerTools(
+    keepConnections: boolean = false,
+  ): Promise<IServerTool> {
     const serverTools: IServerTool = {}
 
     await Async.forEachAsync(this._mcpServers, async (server) => {
@@ -127,9 +193,12 @@ export class McpHub {
       }
     })
 
-    await Async.forEachAsync(this._mcpServers, async (server) => {
-      await this._deleteConnect(server.name)
-    })
+    // Only disconnect if we're not keeping connections for tool execution
+    if (!keepConnections) {
+      await Async.forEachAsync(this._mcpServers, async (server) => {
+        await this._deleteConnect(server.name)
+      })
+    }
 
     return serverTools
   }

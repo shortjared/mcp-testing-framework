@@ -30,7 +30,13 @@ program
   .description(
     'Execute tests and evaluate results. Optional prefix to filter test suites.',
   )
-  .action((prefix?: string) => evaluateTests(prefix))
+  .option(
+    '--prompt <filter>',
+    'Filter test cases by prompt content (case-insensitive contains)',
+  )
+  .action((prefix?: string, options?: { prompt?: string }) =>
+    evaluateTests(prefix, options?.prompt),
+  )
 
 // Run the program
 ;(async () => {

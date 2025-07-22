@@ -15,6 +15,7 @@ export class OpenAiProvider implements IApiProvider {
     this._client = new OpenAI({
       baseURL: this.apiUrl,
       apiKey: this.apiKey,
+      maxRetries: 8, // Increased from default 2 for testing scenarios
     })
   }
 

@@ -17,15 +17,20 @@ import {
   IModelResponse,
   ISuiteResult,
   IMultiSuiteResult,
+  IToolExecutionResult,
+  IGradingResult,
 } from '../../types/evaluate'
 import { MCP_REPORTS_FOLDER } from '../../constants'
 import { MCPReport } from '../../utilities/generate-report'
 import { ConcurrencyController } from '../../utilities/concurrency-controller'
 import { TableFormatter } from '../../utilities/table-formatter'
+import { GradingService } from '../../utilities/grading-service'
 
 export class TestManager {
   private _testRound: number
   private _passThreshold: number
+  private _executeTools: boolean
+  private _gradingPrompt?: string
   private _modelsToTest: string[]
   private _testCases: ITestCase[]
   private _mcpServers: IMcpServer[]
@@ -35,11 +40,18 @@ export class TestManager {
   private _mcpHub: McpHub
   private _mcpReport: MCPReport
 
-  public constructor(config: IMcpTestingFrameworkConfig) {
+  public constructor(
+    config: IMcpTestingFrameworkConfig,
+    promptFilter?: string,
+  ) {
     this._testRound = config.testRound ?? 10
     this._passThreshold = config.passThreshold ?? 0
+    this._executeTools = config.executeTools ?? false
+    this._gradingPrompt = config.gradingPrompt
     this._modelsToTest = config.modelsToTest
-    this._testCases = config.testCases
+    this._testCases = promptFilter
+      ? this._filterTestCases(config.testCases, promptFilter)
+      : config.testCases
     this._mcpServers = config.mcpServers
     this._concurrencyController = new ConcurrencyController(
       config.concurrencyLimit,
@@ -56,7 +68,30 @@ export class TestManager {
       testRound: this._testRound,
       mcpServers: this._mcpServers,
       concurrencyLimit: this._concurrencyController.concurrencyLimit,
+      executeTools: this._executeTools,
+      gradingPrompt: this._gradingPrompt,
     })
+  }
+
+  private _filterTestCases(
+    testCases: ITestCase[],
+    promptFilter: string,
+  ): ITestCase[] {
+    const filtered = testCases.filter((testCase) =>
+      testCase.prompt.toLowerCase().includes(promptFilter.toLowerCase()),
+    )
+
+    if (filtered.length === 0) {
+      logger.writeWarningLine(
+        `No test cases found matching prompt filter: '${promptFilter}'`,
+      )
+    } else {
+      logger.writeLine(
+        `Filtered to ${filtered.length} test case(s) matching prompt filter: '${promptFilter}'`,
+      )
+    }
+
+    return filtered
   }
 
   private _createApiProvider(provider: string, model: string): IApiProvider {
@@ -102,7 +137,9 @@ export class TestManager {
     currentIteration: { value: number },
     totalIterations: number,
   ): Promise<{ passed: boolean; response: IModelResponse }> {
-    let passed: boolean
+    let passed = false
+    let toolExecutionResult: IToolExecutionResult | undefined
+    let gradingResult: IGradingResult | undefined
 
     try {
       const { provider, model: modelName } = parseModelSpec(
@@ -110,27 +147,114 @@ export class TestManager {
       )
       const apiProvider = this._createApiProvider(provider, modelName)
 
+      // Step 1: Get model response and parse XML
       const modelResponse = await apiProvider.createMessage(
         systemPrompt,
         testCase.prompt,
       )
       const parsedResponse = await parseXml(modelResponse.trim())
-      passed = isEqual(testCase.expectedOutput, parsedResponse)
+
+      // Step 2: Validate tool usage format (always required)
+      // Support backward compatibility: check expectedToolUsage first, then expectedOutput
+      const expectedToolUsage =
+        (testCase as any).expectedToolUsage || (testCase as any).expectedOutput
+      if (!expectedToolUsage) {
+        throw new Error(
+          'Test case must have expectedToolUsage or expectedOutput',
+        )
+      }
+
+      const toolUsagePassed = isEqual(expectedToolUsage, parsedResponse)
+
+      // Step 3: Execute tool if enabled OR if expectedResults are defined (which requires execution)
+      const shouldExecuteTools =
+        this._executeTools || !!testCase.expectedResults
+      if (shouldExecuteTools && toolUsagePassed) {
+        toolExecutionResult = await this._mcpHub.executeTool(
+          parsedResponse.serverName,
+          parsedResponse.toolName,
+          parsedResponse.parameters,
+        )
+
+        // Step 4: Generate final message after tool execution
+        let finalMessage: string | undefined
+        if (toolExecutionResult.success) {
+          try {
+            // Ask the LLM to generate a final response based on tool results
+            const followUpPrompt = `Based on the user's request: "${testCase.prompt}"
+
+I executed the ${parsedResponse.toolName} tool and got these results:
+${JSON.stringify(toolExecutionResult.content, null, 2)}
+
+Please provide a helpful, natural language response to the user based on these results. Be concise and directly address what they asked for.`
+
+            finalMessage = await apiProvider.createMessage(
+              'You are a helpful assistant. Provide clear, direct responses based on tool execution results.',
+              followUpPrompt,
+            )
+          } catch (error) {
+            logger.writeWarningLine(
+              `Failed to generate final message: ${error instanceof Error ? error.message : String(error)}`,
+            )
+          }
+        }
+
+        // Step 5: Grade results if expectedResults provided
+        if (testCase.expectedResults && toolExecutionResult.success) {
+          const gradingService = new GradingService(apiProvider)
+          const gradingPrompt = testCase.gradingPrompt || this._gradingPrompt
+
+          gradingResult = await gradingService.gradeResults(
+            testCase.prompt,
+            testCase.expectedResults.content,
+            toolExecutionResult.content,
+            gradingPrompt,
+          )
+
+          // Include final message in grading result
+          if (gradingResult) {
+            gradingResult.finalMessage = finalMessage
+          }
+        } else if (finalMessage) {
+          // Even if no expectedResults, create a grading result to store the final message
+          gradingResult = {
+            grade: 'PASS', // Default to pass when only capturing final message
+            reasoning:
+              'Final message captured (no result validation performed)',
+            finalMessage,
+          }
+        }
+      }
+
+      // Step 6: Determine overall pass/fail
+      if (testCase.expectedResults) {
+        // If expectedResults provided, both tool usage AND grading must pass
+        passed =
+          toolUsagePassed &&
+          toolExecutionResult?.success === true &&
+          gradingResult?.grade === 'PASS'
+      } else {
+        // If no expectedResults, only tool usage format needs to pass
+        passed = toolUsagePassed
+      }
 
       const response: IModelResponse = {
         response: parsedResponse,
         passed,
+        toolExecutionResult,
+        gradingResult,
       }
 
       return { passed, response }
     } catch (error) {
-      passed = false
       const response: IModelResponse = {
-        error: error.message,
-        passed,
+        error: error instanceof Error ? error.message : String(error),
+        passed: false,
+        toolExecutionResult,
+        gradingResult,
       }
 
-      return { passed, response }
+      return { passed: false, response }
     } finally {
       currentIteration.value++
       this._updateProgress(currentIteration.value, totalIterations)
@@ -138,85 +262,106 @@ export class TestManager {
   }
 
   public async evaluate(): Promise<IEvaluateResult[]> {
-    const serverTools = await this._mcpHub.listAllServerTools()
-    const systemPrompt = SYSTEM_PROMPT(serverTools)
+    try {
+      // Check if any test case requires tool execution (has expectedResults)
+      const anyTestRequiresExecution =
+        this._executeTools || this._testCases.some((tc) => !!tc.expectedResults)
 
-    const totalIterations = this._getTotalIterations()
-    const currentIteration = { value: 0 }
+      // Get server tools and optionally keep connections alive for tool execution
+      const serverTools = await this._mcpHub.listAllServerTools(
+        anyTestRequiresExecution,
+      )
+      const systemPrompt = SYSTEM_PROMPT(serverTools)
 
-    logger.writeLine(
-      `Running ${this._testRound} tests across ${this._testCases.length} prompts and ${this._modelsToTest.length} models...`,
-    )
-    this._updateProgress(0, totalIterations)
+      const totalIterations = this._getTotalIterations()
+      const currentIteration = { value: 0 }
 
-    const testTasks: Promise<IEvaluateResult>[] = this._testCases.map(
-      async (testCase) => {
-        const modelTasks: Promise<{
-          passRate: number
-          responses: IModelResponse[]
-        }>[] = this._modelsToTest.map(async (model, modelIndex) => {
-          const roundTaskFunctions = Array.from(
-            { length: this._testRound },
-            () => () =>
-              this._runSingleTest(
-                testCase,
-                modelIndex,
-                systemPrompt,
-                currentIteration,
-                totalIterations,
-              ),
-          )
+      logger.writeLine(
+        `Running ${this._testRound} tests across ${this._testCases.length} prompts and ${this._modelsToTest.length} models...`,
+      )
+      this._updateProgress(0, totalIterations)
 
-          const roundResults =
-            await this._concurrencyController.executeLimited(roundTaskFunctions)
+      const testTasks: Promise<IEvaluateResult>[] = this._testCases.map(
+        async (testCase) => {
+          const modelTasks: Promise<{
+            passRate: number
+            responses: IModelResponse[]
+          }>[] = this._modelsToTest.map(async (model, modelIndex) => {
+            const roundTaskFunctions = Array.from(
+              { length: this._testRound },
+              () => () =>
+                this._runSingleTest(
+                  testCase,
+                  modelIndex,
+                  systemPrompt,
+                  currentIteration,
+                  totalIterations,
+                ),
+            )
 
-          const passCount = roundResults.filter(
-            (result) => result.passed,
-          ).length
-          const passRate = passCount / this._testRound
+            const roundResults =
+              await this._concurrencyController.executeLimited(
+                roundTaskFunctions,
+              )
 
-          const responses = roundResults.map((result) => result.response)
+            const passCount = roundResults.filter(
+              (result) => result.passed,
+            ).length
+            const passRate = passCount / this._testRound
 
-          return { passRate, responses }
-        })
+            const responses = roundResults.map((result) => result.response)
 
-        const modelResults = await Promise.all(modelTasks)
+            return { passRate, responses }
+          })
 
-        return {
-          prompt: testCase.prompt,
-          rates: modelResults.map((result) => result.passRate),
-          modelResponses: modelResults.map((result) => result.responses),
-        }
-      },
-    )
+          const modelResults = await Promise.all(modelTasks)
 
-    const evaluateResults = await Promise.all(testTasks)
+          return {
+            prompt: testCase.prompt,
+            rates: modelResults.map((result) => result.passRate),
+            modelResponses: modelResults.map((result) => result.responses),
+          }
+        },
+      )
 
-    logger.writeLine('\nResults:')
-    const isAllPass = this._generateTable(evaluateResults)
+      const evaluateResults = await Promise.all(testTasks)
 
-    await this._mcpReport.generateReport(evaluateResults, isAllPass)
+      logger.writeLine('\nResults:')
+      const isAllPass = this._generateTable(evaluateResults)
 
-    if (isAllPass) {
-      logger.writeLine(Colorize.green('All tests passed!\n'))
-    } else {
-      logger.writeErrorLine(Colorize.red('Some tests failed!'))
+      await this._mcpReport.generateReport(evaluateResults, isAllPass)
+
+      if (isAllPass) {
+        logger.writeLine(Colorize.green('All tests passed!\n'))
+      } else {
+        logger.writeErrorLine(Colorize.red('Some tests failed!'))
+      }
+
+      return evaluateResults
+    } finally {
+      // Disconnect from MCP servers if tool execution was used (connections were kept alive)
+      const anyTestRequiredExecution =
+        this._executeTools || this._testCases.some((tc) => !!tc.expectedResults)
+      if (anyTestRequiredExecution) {
+        await this._mcpHub.disconnectAllServers()
+      }
     }
-
-    return evaluateResults
   }
 
-  public static async loadFromConfiguration(): Promise<TestManager> {
+  public static async loadFromConfiguration(
+    promptFilter?: string,
+  ): Promise<TestManager> {
     const config = await readConfig()
     if (!config) {
       throw new Error('Cannot find configuration file')
     }
-    return new TestManager(config)
+    return new TestManager(config, promptFilter)
   }
 
   public static async loadFromDirectory(
     directory: string = process.cwd(),
     prefix?: string,
+    promptFilter?: string,
   ): Promise<TestManager[]> {
     const suites = await readConfigs(directory, prefix)
 
@@ -228,12 +373,13 @@ export class TestManager {
       )
     }
 
-    return suites.map((suite) => new TestManager(suite.config))
+    return suites.map((suite) => new TestManager(suite.config, promptFilter))
   }
 
   public static async executeMultiple(
     directory: string = process.cwd(),
     prefix?: string,
+    promptFilter?: string,
   ): Promise<IMultiSuiteResult> {
     const suites = await readConfigs(directory, prefix)
 
@@ -258,7 +404,16 @@ export class TestManager {
       )
       logger.writeLine(`File: ${suite.filePath}`)
 
-      const testManager = new TestManager(suite.config)
+      const testManager = new TestManager(suite.config, promptFilter)
+
+      // Skip suite if no test cases match the filter
+      if (testManager._testCases.length === 0) {
+        logger.writeWarningLine(
+          `Skipping suite '${suite.name}' - no test cases match filter`,
+        )
+        continue
+      }
+
       const evaluateResults = await testManager.evaluate()
 
       const totalTests = evaluateResults.reduce(
