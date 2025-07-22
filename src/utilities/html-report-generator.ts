@@ -1,5 +1,6 @@
 import { FileSystem } from '@rushstack/node-core-library'
 import path from 'path'
+import * as Diff from 'diff'
 
 import { ITestReport } from './generate-report'
 import { logger } from './logger'
@@ -344,6 +345,42 @@ export class HtmlReportGenerator {
             margin-top: 10px;
         }
 
+        .view-toggle {
+            margin-bottom: 15px;
+        }
+
+        .view-toggle button {
+            background: #f8f9fa;
+            border: 1px solid #dee2e6;
+            padding: 8px 16px;
+            margin-right: 10px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 0.9rem;
+        }
+
+        .view-toggle button.active {
+            background: #007bff;
+            color: white;
+            border-color: #007bff;
+        }
+
+        .view-toggle button:hover {
+            background: #e9ecef;
+        }
+
+        .view-toggle button.active:hover {
+            background: #0056b3;
+        }
+
+        .comparison-view, .diff-view {
+            display: none;
+        }
+
+        .comparison-view.active, .diff-view.active {
+            display: block;
+        }
+
         .expected-column, .actual-column {
             background: white;
             border-radius: 4px;
@@ -367,6 +404,59 @@ export class HtmlReportGenerator {
             background: #f8d7da;
             color: #721c24;
             border: 1px solid #f5c6cb;
+        }
+
+        .diff-container {
+            background: white;
+            border: 1px solid #e9ecef;
+            border-radius: 4px;
+            overflow: hidden;
+        }
+
+        .diff-line {
+            padding: 2px 8px;
+            font-family: 'Monaco', 'Consolas', 'Courier New', monospace;
+            font-size: 0.85rem;
+            line-height: 1.4;
+            white-space: pre-wrap;
+            margin: 0;
+            border: none;
+        }
+
+        .diff-added {
+            background-color: #d4edda;
+            color: #155724;
+        }
+
+        .diff-removed {
+            background-color: #f8d7da;
+            color: #721c24;
+        }
+
+        .diff-context {
+            background-color: #f8f9fa;
+            color: #6c757d;
+        }
+
+        .diff-summary {
+            background: #fff3cd;
+            border: 1px solid #ffeaa7;
+            padding: 10px;
+            border-radius: 4px;
+            margin-bottom: 10px;
+            font-size: 0.9rem;
+        }
+
+        .diff-summary.match {
+            background: #d4edda;
+            border-color: #c3e6cb;
+            color: #155724;
+        }
+
+        .diff-summary.mismatch {
+            background: #f8d7da;
+            border-color: #f5c6cb;
+            color: #721c24;
         }
 
         .final-message {
@@ -627,7 +717,7 @@ export class HtmlReportGenerator {
                 (detail, roundIndex) => `
                 <div class="round-result ${detail.passed ? 'pass' : 'fail'} ${roundIndex === 0 ? 'active' : ''}" 
                      onclick="showRoundDetail('${testId}', ${roundIndex})"
-                     title="Round ${roundIndex + 1}: ${detail.passed ? 'PASS' : 'FAIL'}${detail.error ? ' - ' + detail.error : ''}">
+                     title="Round ${roundIndex + 1}: ${detail.passed ? 'PASS' : 'FAIL'}${detail.error ? ' - ' + detail.error : ''}${!detail.passed && detail.response && expectedToolUsage ? ' - Tool usage mismatch' : ''}">
                     Round ${roundIndex + 1}
                 </div>
             `,
@@ -661,25 +751,71 @@ export class HtmlReportGenerator {
       `
     }
 
-    // Tool Usage Comparison (Expected vs Actual)
+    // Tool Usage Comparison with Diff (Expected vs Actual)
     if (detail.response || expectedToolUsage) {
+      const diffResult = this._generateDiff(expectedToolUsage, detail.response)
+      const viewId = Math.random().toString(36).substr(2, 9)
+
       content += `
         <div class="tool-usage-comparison">
             <h4>🔧 Tool Usage Comparison</h4>
-            <div class="comparison-grid">
-                <div class="expected-column">
-                    <h5>📋 Expected Tool Usage</h5>
-                    <div class="code-block">${JSON.stringify(expectedToolUsage, null, 2)}</div>
+            <div class="diff-summary ${diffResult.isMatch ? 'match' : 'mismatch'}">
+                ${diffResult.summary}
+            </div>
+            
+            ${
+              !diffResult.isMatch
+                ? `
+                <div class="view-toggle">
+                    <button class="active" onclick="switchView('${viewId}', 'comparison')">📊 Side-by-Side</button>
+                    <button onclick="switchView('${viewId}', 'diff')">🔍 Diff View</button>
                 </div>
-                <div class="actual-column">
-                    <h5>📤 Actual Tool Usage (Model Response)</h5>
-                    ${
-                      detail.response
-                        ? `<div class="code-block">${JSON.stringify(detail.response, null, 2)}</div>`
-                        : `<div class="code-block error">No response generated</div>`
-                    }
+            `
+                : ''
+            }
+            
+            <div class="comparison-view ${!diffResult.isMatch ? 'active' : ''}" id="comparison-${viewId}">
+                <div class="comparison-grid">
+                    <div class="expected-column">
+                        <h5>📋 Expected Tool Usage</h5>
+                        <div class="code-block">${JSON.stringify(expectedToolUsage, null, 2)}</div>
+                    </div>
+                    <div class="actual-column">
+                        <h5>📤 Actual Tool Usage (Model Response)</h5>
+                        ${
+                          detail.response
+                            ? `<div class="code-block">${JSON.stringify(detail.response, null, 2)}</div>`
+                            : `<div class="code-block error">No response generated</div>`
+                        }
+                    </div>
                 </div>
             </div>
+            
+            ${
+              !diffResult.isMatch
+                ? `
+                <div class="diff-view" id="diff-${viewId}">
+                    <h5>🔍 Detailed Diff (- Expected / + Actual)</h5>
+                    ${diffResult.diffHtml}
+                </div>
+            `
+                : diffResult.isMatch
+                  ? `
+                <div class="comparison-view active">
+                    <div class="comparison-grid">
+                        <div class="expected-column">
+                            <h5>📋 Expected Tool Usage</h5>
+                            <div class="code-block">${JSON.stringify(expectedToolUsage, null, 2)}</div>
+                        </div>
+                        <div class="actual-column">
+                            <h5>📤 Actual Tool Usage (Model Response)</h5>
+                            <div class="code-block">${JSON.stringify(detail.response, null, 2)}</div>
+                        </div>
+                    </div>
+                </div>
+            `
+                  : ''
+            }
         </div>
       `
     }
@@ -792,6 +928,28 @@ export class HtmlReportGenerator {
             }
         }
 
+        function switchView(viewId, viewType) {
+            // Hide all views for this comparison
+            const comparisonView = document.getElementById('comparison-' + viewId);
+            const diffView = document.getElementById('diff-' + viewId);
+            
+            comparisonView.classList.remove('active');
+            diffView.classList.remove('active');
+            
+            // Show selected view
+            if (viewType === 'comparison') {
+                comparisonView.classList.add('active');
+            } else {
+                diffView.classList.add('active');
+            }
+            
+            // Update button states
+            const container = comparisonView.closest('.tool-usage-comparison');
+            const buttons = container.querySelectorAll('.view-toggle button');
+            buttons.forEach(btn => btn.classList.remove('active'));
+            event.target.classList.add('active');
+        }
+
         // Auto-expand failed tests
         document.addEventListener('DOMContentLoaded', function() {
             document.querySelectorAll('.test-case.test-failed').forEach((testCase, index) => {
@@ -804,7 +962,41 @@ export class HtmlReportGenerator {
   }
 
   private _formatTimestamp(): string {
-    return new Date(this._report.timestamp).toLocaleString()
+    try {
+      // The timestamp has colons replaced with dashes for filename safety
+      // Example: 2024-01-01T12-30-45.123Z -> 2024-01-01T12:30:45.123Z
+      // We need to restore colons in the time part only
+      let isoTimestamp = this._report.timestamp
+
+      // Find the 'T' separator and restore colons after it
+      const tIndex = isoTimestamp.indexOf('T')
+      if (tIndex !== -1) {
+        const datePart = isoTimestamp.substring(0, tIndex + 1)
+        const timePart = isoTimestamp.substring(tIndex + 1)
+        // Replace the first two dashes in the time part with colons
+        const fixedTimePart = timePart.replace(/-/g, (match, offset) => {
+          // First two dashes should be colons (HH-MM-SS -> HH:MM:SS)
+          if (offset < 6) {
+            // Within HH-MM-SS part
+            return ':'
+          }
+          return match
+        })
+        isoTimestamp = datePart + fixedTimePart
+      }
+
+      const date = new Date(isoTimestamp)
+      if (isNaN(date.getTime())) {
+        throw new Error('Invalid date')
+      }
+
+      return date.toLocaleString()
+    } catch (error) {
+      // Fallback: try to create a more readable format from the timestamp
+      return this._report.timestamp
+        .replace('T', ' at ')
+        .replace(/\.\d{3}Z$/, '')
+    }
   }
 
   private _escapeHtml(text: string): string {
@@ -814,5 +1006,63 @@ export class HtmlReportGenerator {
       .replace(/>/g, '&gt;')
       .replace(/"/g, '&quot;')
       .replace(/'/g, '&#39;')
+  }
+
+  private _generateDiff(
+    expected: any,
+    actual: any,
+  ): { isMatch: boolean; diffHtml: string; summary: string } {
+    const expectedStr = JSON.stringify(expected, null, 2)
+    const actualStr = actual
+      ? JSON.stringify(actual, null, 2)
+      : 'No response generated'
+
+    // Check if they match exactly
+    const isMatch = JSON.stringify(expected) === JSON.stringify(actual)
+
+    if (isMatch) {
+      return {
+        isMatch: true,
+        diffHtml: `<div class="diff-container">
+          <div class="diff-line diff-context">${this._escapeHtml(expectedStr)}</div>
+        </div>`,
+        summary: '✅ Tool usage matches exactly',
+      }
+    }
+
+    // Generate line-by-line diff
+    const diff = Diff.diffLines(expectedStr, actualStr)
+
+    let diffHtml = '<div class="diff-container">'
+    let addedLines = 0
+    let removedLines = 0
+
+    diff.forEach((part) => {
+      const lines = part.value.split('\n')
+      lines.forEach((line, index) => {
+        // Skip empty lines at the end
+        if (index === lines.length - 1 && line === '') return
+
+        if (part.added) {
+          diffHtml += `<div class="diff-line diff-added">+ ${this._escapeHtml(line)}</div>`
+          addedLines++
+        } else if (part.removed) {
+          diffHtml += `<div class="diff-line diff-removed">- ${this._escapeHtml(line)}</div>`
+          removedLines++
+        } else {
+          diffHtml += `<div class="diff-line diff-context">  ${this._escapeHtml(line)}</div>`
+        }
+      })
+    })
+
+    diffHtml += '</div>'
+
+    const summary = `❌ Tool usage differs: ${removedLines} line(s) removed, ${addedLines} line(s) added`
+
+    return {
+      isMatch: false,
+      diffHtml,
+      summary,
+    }
   }
 }

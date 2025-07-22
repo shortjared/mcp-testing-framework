@@ -70,4 +70,6 @@ temp
 dist
 build_*
 
+.envrc
+
 mcp-reports
