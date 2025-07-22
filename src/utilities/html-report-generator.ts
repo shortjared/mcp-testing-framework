@@ -500,33 +500,33 @@ export class HtmlReportGenerator {
         }
 
         .code-block.json {
-            background: #1e1e1e;
-            color: #d4d4d4;
-            border: 1px solid #3c3c3c;
+            background: #f8f9fa;
+            color: #495057;
+            border: 1px solid #e9ecef;
         }
 
         .json-key {
-            color: #9cdcfe;
+            color: #0066cc;
         }
 
         .json-string {
-            color: #ce9178;
+            color: #008000;
         }
 
         .json-number {
-            color: #b5cea8;
+            color: #795548;
         }
 
         .json-boolean {
-            color: #569cd6;
+            color: #9c27b0;
         }
 
         .json-null {
-            color: #569cd6;
+            color: #9c27b0;
         }
 
         .json-punctuation {
-            color: #d4d4d4;
+            color: #495057;
         }
 
         .filters {
