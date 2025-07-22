@@ -1,0 +1,24 @@
+# Number of rounds for each model test execution
+testRound: 10
+
+# Minimum threshold for passing tests (decimal between 0-1)
+passThreshold: 0.8
+
+# List of models to test
+modelsToTest:
+  - openai:gpt-4o
+  - openai:gpt-4o-mini
+
+# Test case definitions
+testCases:
+  - prompt: 'Can penguins fly?'
+    expectedOutput:
+      serverName: 'example-server'
+      toolName: 'animal-characteristics'
+      parameters:
+        animal: 'penguin'
+
+# MCP server configuration
+mcpServers:
+  - name: 'example-server'
+    url: 'http://mcp.example.com/sse'

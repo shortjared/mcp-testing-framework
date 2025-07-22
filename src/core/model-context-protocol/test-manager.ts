@@ -3,7 +3,7 @@ import { isEqual } from 'lodash'
 import path from 'path'
 
 import { createProvider, hasProvider } from '../../api/provider'
-import { parseModelSpec, readConfig } from '../../utilities/config'
+import { parseModelSpec, readConfig, readConfigs } from '../../utilities/config'
 import { McpHub } from './mcp-hub'
 import { IApiProvider } from '../../api/provider/provider'
 import { SYSTEM_PROMPT } from '../../core/prompts/system'
@@ -15,6 +15,8 @@ import {
   IMcpServer,
   ITestCase,
   IModelResponse,
+  ISuiteResult,
+  IMultiSuiteResult,
 } from '../../types/evaluate'
 import { MCP_REPORTS_FOLDER } from '../../constants'
 import { MCPReport } from '../../utilities/generate-report'
@@ -135,7 +137,7 @@ export class TestManager {
     }
   }
 
-  public async evaluate(): Promise<void> {
+  public async evaluate(): Promise<IEvaluateResult[]> {
     const serverTools = await this._mcpHub.listAllServerTools()
     const systemPrompt = SYSTEM_PROMPT(serverTools)
 
@@ -199,8 +201,9 @@ export class TestManager {
       logger.writeLine(Colorize.green('All tests passed!\n'))
     } else {
       logger.writeErrorLine(Colorize.red('Some tests failed!'))
-      process.exit(1)
     }
+
+    return evaluateResults
   }
 
   public static async loadFromConfiguration(): Promise<TestManager> {
@@ -209,5 +212,110 @@ export class TestManager {
       throw new Error('Cannot find configuration file')
     }
     return new TestManager(config)
+  }
+
+  public static async loadFromDirectory(
+    directory: string = process.cwd(),
+    prefix?: string,
+  ): Promise<TestManager[]> {
+    const suites = await readConfigs(directory, prefix)
+
+    if (suites.length === 0) {
+      throw new Error(
+        prefix
+          ? `No valid test configurations found matching prefix '${prefix}' in '${directory}'`
+          : `No valid test configurations found in '${directory}'`,
+      )
+    }
+
+    return suites.map((suite) => new TestManager(suite.config))
+  }
+
+  public static async executeMultiple(
+    directory: string = process.cwd(),
+    prefix?: string,
+  ): Promise<IMultiSuiteResult> {
+    const suites = await readConfigs(directory, prefix)
+
+    if (suites.length === 0) {
+      throw new Error(
+        prefix
+          ? `No valid test configurations found matching prefix '${prefix}' in '${directory}'`
+          : `No valid test configurations found in '${directory}'`,
+      )
+    }
+
+    logger.writeLine(
+      `Found ${suites.length} test suite${suites.length > 1 ? 's' : ''} to execute:\n`,
+    )
+
+    const suiteResults: ISuiteResult[] = []
+    let passedSuites = 0
+
+    for (const suite of suites) {
+      logger.writeLine(
+        Colorize.cyan(`\n=== Executing Suite: ${suite.name} ===`),
+      )
+      logger.writeLine(`File: ${suite.filePath}`)
+
+      const testManager = new TestManager(suite.config)
+      const evaluateResults = await testManager.evaluate()
+
+      const totalTests = evaluateResults.reduce(
+        (sum, result) => sum + result.rates.length,
+        0,
+      )
+      const passedTests = evaluateResults.reduce(
+        (sum, result) =>
+          sum +
+          result.rates.filter((rate) => rate >= testManager._passThreshold)
+            .length,
+        0,
+      )
+
+      const passRate = totalTests > 0 ? passedTests / totalTests : 0
+      const suitePassed = passRate >= testManager._passThreshold
+
+      if (suitePassed) {
+        passedSuites++
+      }
+
+      suiteResults.push({
+        suiteInfo: suite,
+        evaluateResults,
+        passed: suitePassed,
+        passRate,
+      })
+
+      logger.writeLine(
+        suitePassed
+          ? Colorize.green(
+              `✓ Suite '${suite.name}' passed (${(passRate * 100).toFixed(1)}%)`,
+            )
+          : Colorize.red(
+              `✗ Suite '${suite.name}' failed (${(passRate * 100).toFixed(1)}%)`,
+            ),
+      )
+    }
+
+    const overallPassed = passedSuites === suites.length
+
+    logger.writeLine(Colorize.cyan('\n=== Multi-Suite Results ==='))
+    logger.writeLine(`Total suites: ${suites.length}`)
+    logger.writeLine(`Passed suites: ${passedSuites}`)
+    logger.writeLine(`Failed suites: ${suites.length - passedSuites}`)
+
+    if (overallPassed) {
+      logger.writeLine(Colorize.green('All test suites passed!'))
+    } else {
+      logger.writeLine(Colorize.red('Some test suites failed!'))
+    }
+
+    return {
+      suiteResults,
+      overallPassed,
+      totalSuites: suites.length,
+      passedSuites,
+    }
   }
 }

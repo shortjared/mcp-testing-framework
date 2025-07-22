@@ -3,10 +3,11 @@ import path from 'path'
 import yaml from 'js-yaml'
 
 import { logger } from './logger'
-import { IMcpTestingFrameworkConfig, IModelSpec } from '../types/evaluate'
-
-const CONFIG_FILE_NAME: 'mcp-testing-framework.yaml' =
-  'mcp-testing-framework.yaml'
+import {
+  IMcpTestingFrameworkConfig,
+  IModelSpec,
+  ISuiteInfo,
+} from '../types/evaluate'
 
 export function parseModelSpec(modelSpec: string): IModelSpec {
   const [provider, model] = modelSpec.split(':')
@@ -22,9 +23,10 @@ export async function findConfigFile(
   startPath: string,
 ): Promise<string | undefined> {
   let currentDir = startPath
+  const configFileName = 'mcp-testing-framework.yaml'
 
   while (await FileSystem.existsAsync(currentDir)) {
-    const configPath = path.join(currentDir, CONFIG_FILE_NAME)
+    const configPath = path.join(currentDir, configFileName)
 
     if (await FileSystem.existsAsync(configPath)) {
       return configPath
@@ -43,7 +45,114 @@ export async function findConfigFile(
 }
 
 /**
- * Reads and parses the MCP Testing Framework configuration file
+ * Validates if a YAML content is a valid MCP Testing Framework configuration
+ */
+function isValidMcpConfig(content: any): content is IMcpTestingFrameworkConfig {
+  return (
+    content &&
+    typeof content === 'object' &&
+    Array.isArray(content.modelsToTest) &&
+    Array.isArray(content.testCases) &&
+    Array.isArray(content.mcpServers)
+  )
+}
+
+/**
+ * Finds all YAML files in a directory, optionally filtered by prefix
+ */
+export async function findConfigFiles(
+  directory: string,
+  prefix?: string,
+): Promise<string[]> {
+  const configFiles: string[] = []
+
+  if (!(await FileSystem.existsAsync(directory))) {
+    return configFiles
+  }
+
+  const items = await FileSystem.readFolderAsync(directory)
+
+  for (const item of items) {
+    const fullPath = path.join(directory, item)
+    const stat = await FileSystem.getStatisticsAsync(fullPath)
+
+    if (stat.isFile() && (item.endsWith('.yaml') || item.endsWith('.yml'))) {
+      if (
+        !prefix ||
+        item === `${prefix}.yaml` ||
+        item === `${prefix}.yml` ||
+        item.includes(prefix)
+      ) {
+        configFiles.push(fullPath)
+      }
+    } else if (stat.isDirectory()) {
+      if (!prefix || item === prefix || item.includes(prefix)) {
+        // If directory matches prefix, get all files inside without further filtering
+        const subFiles = await findConfigFiles(fullPath, undefined)
+        configFiles.push(...subFiles)
+      } else {
+        // Recurse to find matching files inside even if directory doesn't match
+        const subFiles = await findConfigFiles(fullPath, prefix)
+        configFiles.push(...subFiles)
+      }
+    }
+  }
+
+  return configFiles.sort()
+}
+
+/**
+ * Reads and validates multiple configuration files
+ */
+export async function readConfigs(
+  directory: string = process.cwd(),
+  prefix?: string,
+): Promise<ISuiteInfo[]> {
+  const configFiles = await findConfigFiles(directory, prefix)
+  const suites: ISuiteInfo[] = []
+
+  if (configFiles.length === 0) {
+    logger.writeWarningLine(
+      prefix
+        ? `No configuration files found matching prefix '${prefix}' in '${directory}'.`
+        : `No YAML/YML configuration files found in '${directory}'.`,
+    )
+    return suites
+  }
+
+  for (const filePath of configFiles) {
+    try {
+      const content = await FileSystem.readFileAsync(filePath)
+      const config = yaml.load(content)
+
+      if (isValidMcpConfig(config)) {
+        const relativePath = path.relative(directory, filePath)
+        const suiteName = relativePath
+          .replace(/\.(yaml|yml)$/, '')
+          .replace(/[\/\\]/g, '-')
+
+        suites.push({
+          name: suiteName,
+          filePath,
+          config: config as IMcpTestingFrameworkConfig,
+        })
+      } else {
+        logger.writeWarningLine(
+          `Skipping '${filePath}' - not a valid MCP testing configuration.`,
+        )
+      }
+    } catch (error) {
+      logger.writeWarningLine(
+        `Failed to parse '${filePath}': ${error instanceof Error ? error.message : String(error)}`,
+      )
+    }
+  }
+
+  return suites
+}
+
+/**
+ * Reads and parses the MCP Testing Framework configuration file (deprecated)
  */
 export async function readConfig(
   startPath: string = process.cwd(),
@@ -52,7 +161,7 @@ export async function readConfig(
 
   if (!filePath) {
     logger.writeWarningLine(
-      `Configuration file '${CONFIG_FILE_NAME}' not found in the project directory or its parents.`,
+      `Configuration file 'mcp-testing-framework.yaml' not found in the project directory or its parents.`,
     )
     return undefined
   }

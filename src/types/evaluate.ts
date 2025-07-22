@@ -42,3 +42,23 @@ export interface IMcpTestingFrameworkConfig {
   testCases: ITestCase[]
   mcpServers: IMcpServer[]
 }
+
+export interface ISuiteInfo {
+  name: string
+  filePath: string
+  config: IMcpTestingFrameworkConfig
+}
+
+export interface ISuiteResult {
+  suiteInfo: ISuiteInfo
+  evaluateResults: IEvaluateResult[]
+  passed: boolean
+  passRate: number
+}
+
+export interface IMultiSuiteResult {
+  suiteResults: ISuiteResult[]
+  overallPassed: boolean
+  totalSuites: number
+  passedSuites: number
+}

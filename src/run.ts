@@ -26,9 +26,11 @@ program
   })
 
 program
-  .command('evaluate')
-  .description('Execute tests and evaluate results')
-  .action(evaluateTests)
+  .command('evaluate [prefix]')
+  .description(
+    'Execute tests and evaluate results. Optional prefix to filter test suites.',
+  )
+  .action((prefix?: string) => evaluateTests(prefix))
 
 // Run the program
 ;(async () => {

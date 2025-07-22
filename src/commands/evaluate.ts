@@ -6,13 +6,25 @@ import { logger } from '../utilities/logger'
 /**
  * Execute tests and evaluate results
  */
-export async function evaluateTests(): Promise<void> {
+export async function evaluateTests(prefix?: string): Promise<void> {
   try {
-    const testManager = await TestManager.loadFromConfiguration()
+    logger.writeLine(
+      prefix
+        ? `Running evaluation tests with prefix filter: '${prefix}'...\n`
+        : 'Running evaluation tests...\n',
+    )
 
-    logger.writeLine('Running evaluation tests...\n')
-    await testManager.evaluate()
-    logger.writeLine(Colorize.green('Evaluation completed!'))
+    const result = await TestManager.executeMultiple(process.cwd(), prefix)
+
+    if (result.overallPassed) {
+      logger.writeLine(
+        Colorize.green('All evaluations completed successfully!'),
+      )
+      process.exit(0)
+    } else {
+      logger.writeLine(Colorize.red('Some evaluations failed!'))
+      process.exit(1)
+    }
   } catch (error) {
     logger.writeErrorLine(
       'Error during evaluation:',
