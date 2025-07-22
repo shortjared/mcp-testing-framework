@@ -25,7 +25,7 @@ export class GradingService {
 
 **Expected Results:** ${expectedResults}
 
-**Actual Tool Execution Results:** ${JSON.stringify(actualResults, null, 2)}
+**Actual AI Response:** ${actualResults}
 
 ## Instructions
 Based on the comparison between expected and actual results, provide your evaluation in this EXACT format:
@@ -77,14 +77,14 @@ Be strict but fair in your evaluation. Consider semantic equivalence, not just e
     actualResults: any,
     customGradingPrompt?: string,
   ): Promise<IGradingResult> {
-    const defaultPrompt = `You are an expert evaluator for MCP (Model Context Protocol) tool execution results. Your job is to determine if the actual results from a tool execution match the expected results for a given test case.
+    const defaultPrompt = `You are an expert evaluator for AI assistant responses. Your job is to determine if the actual AI response matches the expected response for a given test case.
 
 You should evaluate based on:
-1. Semantic correctness - does the actual result convey the same meaning as expected?
-2. Data accuracy - are the key facts and values correct?
-3. Format appropriateness - is the result in a reasonable format for the intended use?
+1. Semantic correctness - does the actual response convey the same meaning as expected?
+2. Information accuracy - are the key facts and values correct?
+3. Response quality - is the response helpful and appropriately formatted for the user?
 
-You should be somewhat lenient with formatting differences and minor wording variations, but strict about factual accuracy and core functionality.`
+You should be somewhat lenient with formatting differences and minor wording variations, but strict about factual accuracy and whether the response adequately addresses the user's request.`
 
     try {
       const gradingPrompt = this._buildGradingPrompt(

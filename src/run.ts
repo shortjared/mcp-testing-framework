@@ -35,8 +35,12 @@ program
     'Filter test cases by prompt content (case-insensitive contains)',
   )
   .option('--html', 'Generate HTML report in addition to JSON report')
-  .action((prefix?: string, options?: { prompt?: string; html?: boolean }) =>
-    evaluateTests(prefix, options?.prompt, options?.html),
+  .option('--open', 'Open HTML report in default browser after generation')
+  .action(
+    (
+      prefix?: string,
+      options?: { prompt?: string; html?: boolean; open?: boolean },
+    ) => evaluateTests(prefix, options?.prompt, options?.html, options?.open),
   )
 
 // Run the program

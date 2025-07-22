@@ -1,9 +1,15 @@
 import { FileSystem } from '@rushstack/node-core-library'
 import path from 'path'
+import { exec } from 'child_process'
+import { promisify } from 'util'
 
 import { IEvaluateResult } from '../types/evaluate'
 import { logger } from './logger'
 import { HtmlReportGenerator } from './html-report-generator'
+
+const execAsync: (
+  command: string,
+) => Promise<{ stdout: string; stderr: string }> = promisify(exec)
 
 export interface ITestReport {
   timestamp: string
@@ -72,6 +78,7 @@ export class MCPReport {
     evaluateResults: IEvaluateResult[],
     isAllPass: boolean,
     generateHtml: boolean = false,
+    openInBrowser: boolean = false,
   ): Promise<string> {
     if (!(await FileSystem.existsAsync(this._options.reportDirectory))) {
       await FileSystem.ensureFolderAsync(this._options.reportDirectory)
@@ -167,14 +174,53 @@ export class MCPReport {
 
     logger.writeLine(`\nDetailed test report saved to: ${reportPath}`)
 
-    // Generate HTML report if requested
-    if (generateHtml) {
+    // Generate HTML report if requested or if opening in browser
+    let htmlReportPath: string | undefined
+    if (generateHtml || openInBrowser) {
       const htmlGenerator = new HtmlReportGenerator(report)
-      await htmlGenerator.generateHtmlReport(this._options.reportDirectory)
+      htmlReportPath = await htmlGenerator.generateHtmlReport(
+        this._options.reportDirectory,
+      )
+
+      // Open in browser if requested
+      if (openInBrowser && htmlReportPath) {
+        await this._openInBrowser(htmlReportPath)
+      }
     }
 
     logger.writeLine('')
 
     return reportPath
+  }
+
+  /**
+   * Open a file in the default browser in a cross-platform way
+   */
+  private async _openInBrowser(filePath: string): Promise<void> {
+    try {
+      const platform = process.platform
+      let command: string
+
+      switch (platform) {
+        case 'win32':
+          command = `start "" "${filePath}"`
+          break
+        case 'darwin':
+          command = `open "${filePath}"`
+          break
+        case 'linux':
+          command = `xdg-open "${filePath}"`
+          break
+        default:
+          throw new Error(`Unsupported platform: ${platform}`)
+      }
+
+      await execAsync(command)
+      logger.writeLine(`Opened HTML report in browser: ${filePath}`)
+    } catch (error) {
+      logger.writeWarningLine(
+        `Failed to open HTML report in browser: ${error instanceof Error ? error.message : String(error)}`,
+      )
+    }
   }
 }

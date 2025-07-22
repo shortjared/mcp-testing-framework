@@ -65,6 +65,7 @@ export class TestManager {
   private _concurrencyController: ConcurrencyController
   private _tableFormatter: TableFormatter
   private _generateHtml: boolean
+  private _openInBrowser: boolean
 
   private _mcpHub: McpHub
   private _mcpReport: MCPReport
@@ -73,12 +74,14 @@ export class TestManager {
     config: IMcpTestingFrameworkConfig,
     promptFilter?: string,
     generateHtml: boolean = false,
+    openInBrowser: boolean = false,
   ) {
     this._testRound = config.testRound ?? 10
     this._passThreshold = config.passThreshold ?? 0
     this._executeTools = config.executeTools ?? false
     this._gradingPrompt = config.gradingPrompt
     this._generateHtml = generateHtml
+    this._openInBrowser = openInBrowser
     this._modelsToTest = config.modelsToTest
     this._testCases = promptFilter
       ? this._filterTestCases(config.testCases, promptFilter)
@@ -241,7 +244,7 @@ Please provide a helpful, natural language response to the user based on these r
           gradingResult = await gradingService.gradeResults(
             testCase.prompt,
             testCase.expectedResults.content,
-            toolExecutionResult.content,
+            finalMessage,
             gradingPrompt,
           )
 
@@ -367,6 +370,7 @@ Please provide a helpful, natural language response to the user based on these r
         evaluateResults,
         isAllPass,
         this._generateHtml,
+        this._openInBrowser,
       )
 
       if (isAllPass) {
@@ -394,7 +398,7 @@ Please provide a helpful, natural language response to the user based on these r
     if (!config) {
       throw new Error('Cannot find configuration file')
     }
-    return new TestManager(config, promptFilter, generateHtml)
+    return new TestManager(config, promptFilter, generateHtml, false)
   }
 
   public static async loadFromDirectory(
@@ -414,7 +418,8 @@ Please provide a helpful, natural language response to the user based on these r
     }
 
     return suites.map(
-      (suite) => new TestManager(suite.config, promptFilter, generateHtml),
+      (suite) =>
+        new TestManager(suite.config, promptFilter, generateHtml, false),
     )
   }
 
@@ -423,6 +428,7 @@ Please provide a helpful, natural language response to the user based on these r
     prefix?: string,
     promptFilter?: string,
     generateHtml?: boolean,
+    openInBrowser?: boolean,
   ): Promise<IMultiSuiteResult> {
     const suites = await readConfigs(directory, prefix)
 
@@ -451,6 +457,7 @@ Please provide a helpful, natural language response to the user based on these r
         suite.config,
         promptFilter,
         generateHtml,
+        openInBrowser,
       )
 
       // Skip suite if no test cases match the filter
