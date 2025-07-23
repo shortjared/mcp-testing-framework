@@ -14,7 +14,7 @@
 
 - Multi-model support (OpenAI, Gemini, Anthropic, Deepseek + custom providers)
 - Batch evaluation with concurrent test execution
-- Automated pass/fail determination based on expected XML-formatted responses
+- Automated pass/fail determination based on expected JSON-formatted responses
 - Multi-MCP Server support (stdio, SSE, HTTP transports)
 - Comprehensive reporting with detailed test results
 - Extensible architecture for custom model providers
@@ -47,7 +47,7 @@
 ```
 Config File → TestManager → McpHub (discovers tools) → System Prompt Generation
                 ↓
-Test Cases → Multiple Model Providers (concurrent) → XML Response Parsing
+Test Cases → Multiple Model Providers (concurrent) → JSON Response Parsing
                 ↓
 Expected Output Comparison → Pass/Fail Results → Report Generation
 ```
@@ -57,7 +57,7 @@ Expected Output Comparison → Pass/Fail Results → Report Generation
 1. **Provider Pattern**: All AI models implement `IApiProvider` interface
 2. **Registry Pattern**: Providers are registered and created through a central registry
 3. **Concurrent Execution**: Tests run concurrently with configurable limits via `ConcurrencyController`
-4. **XML-based Responses**: Models must respond in structured XML format for tool calls
+4. **JSON-based Responses**: Models must respond in structured JSON format for tool calls
 5. **Configuration Discovery**: Searches up directory tree for `mcp-testing-framework.yaml`
 
 ## Development Commands
@@ -111,6 +111,20 @@ testCases:
       parameters:
         weightKg: 90
         heightM: 1.8
+  - prompt: 'Search for healthcare providers in California'
+    expectedOutput:
+      serverName: 'healthcare-server'
+      toolName: 'search-providers'
+      parameters:
+        # Case insensitive comparison for state parameter
+        state:
+          value: 'california'
+          caseInsensitive: true
+        # Optional parameter with case insensitive comparison
+        specialty:
+          value: 'cardiology'
+          optional: true
+          caseInsensitive: true
 
 # MCP Server configurations
 mcpServers:
@@ -122,6 +136,44 @@ mcpServers:
   - name: 'remote-server'
     url: 'http://localhost:3001/sse' # SSE transport
 ```
+
+### Enhanced Parameter Configuration
+
+The framework supports enhanced parameter configuration with additional options:
+
+#### Simple Parameters
+
+```yaml
+parameters:
+  weightKg: 90
+  heightM: 1.8
+```
+
+#### Enhanced Parameters with Options
+
+```yaml
+parameters:
+  # Optional parameter - test passes even if model doesn't provide this
+  optionalParam:
+    value: 'default-value'
+    optional: true
+
+  # Case insensitive comparison - 'California', 'california', 'CALIFORNIA' all match
+  state:
+    value: 'california'
+    caseInsensitive: true
+
+  # Combined options - optional AND case insensitive
+  category:
+    value: 'medical'
+    optional: true
+    caseInsensitive: true
+```
+
+#### Enhanced Parameter Options
+
+- **`optional: true`** - Parameter is not required for test to pass. If missing from model response, test continues without failure.
+- **`caseInsensitive: true`** - String comparison ignores case. Works with strings, arrays of strings, and nested objects containing strings.
 
 ### Environment Variables
 
@@ -179,17 +231,19 @@ modelsToTest:
 The framework generates system prompts that include:
 
 - Available MCP tools with descriptions and schemas
-- Required XML response format
+- Required JSON response format
 - Examples of proper tool usage
 
-Models must respond in this XML format:
+Models must respond in this JSON format:
 
-```xml
-<server_name>
-  <tool_name>
-    <parameter_name>parameter_value</parameter_name>
-  </tool_name>
-</server_name>
+```json
+{
+  "serverName": "server_name",
+  "toolName": "tool_name",
+  "parameters": {
+    "parameter_name": "parameter_value"
+  }
+}
 ```
 
 ## Important File Locations
@@ -229,13 +283,13 @@ The framework evaluates MCP servers by:
 1. **Discovering Tools**: Connects to configured MCP servers to list available tools
 2. **Generating System Prompts**: Creates comprehensive prompts with tool schemas
 3. **Running Test Cases**: Executes prompts against multiple models concurrently
-4. **Parsing Responses**: Expects structured XML responses matching expected output
+4. **Parsing Responses**: Expects structured JSON responses matching expected output
 5. **Calculating Pass Rates**: Compares actual vs expected outputs using deep equality
 6. **Generating Reports**: Creates detailed reports in `mcp-report/` directory
 
 ### Success Criteria
 
-- Tests pass when model responses exactly match expected XML structure
+- Tests pass when model responses exactly match expected JSON structure
 - Pass rates calculated per model per test case
 - Overall success requires all test cases to meet the configured pass threshold
 
@@ -245,7 +299,7 @@ The framework evaluates MCP servers by:
 2. **Code Style**: Follows Rushstack ESLint config with Prettier formatting
 3. **Type Safety**: Strict TypeScript - ensure all types are properly defined
 4. **Concurrency**: Test execution is concurrent by default - consider rate limits
-5. **Error Handling**: Framework expects XML responses - malformed responses fail tests
+5. **Error Handling**: Framework expects JSON responses - malformed responses fail tests
 6. **Debugging**: Check `mcp-report/` directory for detailed test results and logs
 
 ## Common Patterns

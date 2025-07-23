@@ -1132,16 +1132,16 @@ export class HtmlReportGenerator {
   }
 
   /**
-   * Check if a parameter value is an enhanced parameter config with optional support
+   * Check if a parameter value is an enhanced parameter config with optional/case insensitive support
    */
   private _isParameterConfig(
     value: any,
-  ): value is { value: any; optional?: boolean } {
+  ): value is { value: any; optional?: boolean; caseInsensitive?: boolean } {
     return (
       value &&
       typeof value === 'object' &&
       'value' in value &&
-      typeof value.optional === 'boolean'
+      (value.optional !== undefined || value.caseInsensitive !== undefined)
     )
   }
 

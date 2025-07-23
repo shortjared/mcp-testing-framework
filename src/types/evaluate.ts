@@ -33,6 +33,7 @@ export interface IModelSpec {
 export interface IParameterConfig {
   value: any
   optional?: boolean
+  caseInsensitive?: boolean
 }
 
 // Type for parameters that can be either simple values or enhanced configs

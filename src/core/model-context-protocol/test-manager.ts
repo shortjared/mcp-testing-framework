@@ -7,7 +7,7 @@ import { parseModelSpec, readConfig, readConfigs } from '../../utilities/config'
 import { McpHub } from './mcp-hub'
 import { IApiProvider } from '../../api/provider/provider'
 import { SYSTEM_PROMPT } from '../../core/prompts/system'
-import { parseXml } from '../../utilities/xml2js'
+import { parseJson } from '../../utilities/json-parser'
 import { logger } from '../../utilities/logger'
 import {
   IEvaluateResult,
@@ -19,6 +19,7 @@ import {
   IMultiSuiteResult,
   IToolExecutionResult,
   IGradingResult,
+  IParameterConfig,
 } from '../../types/evaluate'
 import { MCP_REPORTS_FOLDER } from '../../constants'
 import { MCPReport } from '../../utilities/generate-report'
@@ -54,6 +55,59 @@ function isParameterOptional(param: any): boolean {
   return isParameterConfig(param) && param.optional === true
 }
 
+function isParameterCaseInsensitive(param: any): boolean {
+  return (
+    isParameterConfig(param) &&
+    (param as IParameterConfig).caseInsensitive === true
+  )
+}
+
+/**
+ * Perform case insensitive comparison for values
+ */
+function compareValuesCaseInsensitive(expected: any, actual: any): boolean {
+  // Handle string values
+  if (typeof expected === 'string' && typeof actual === 'string') {
+    return expected.toLowerCase() === actual.toLowerCase()
+  }
+
+  // Handle arrays
+  if (Array.isArray(expected) && Array.isArray(actual)) {
+    if (expected.length !== actual.length) {
+      return false
+    }
+    return expected.every((expectedItem, index) =>
+      compareValuesCaseInsensitive(expectedItem, actual[index]),
+    )
+  }
+
+  // Handle objects
+  if (
+    typeof expected === 'object' &&
+    typeof actual === 'object' &&
+    expected !== null &&
+    actual !== null &&
+    !Array.isArray(expected) &&
+    !Array.isArray(actual)
+  ) {
+    const expectedKeys = Object.keys(expected)
+    const actualKeys = Object.keys(actual)
+
+    if (expectedKeys.length !== actualKeys.length) {
+      return false
+    }
+
+    return expectedKeys.every(
+      (key) =>
+        actualKeys.includes(key) &&
+        compareValuesCaseInsensitive(expected[key], actual[key]),
+    )
+  }
+
+  // For all other types (numbers, booleans, null, etc.), use regular equality
+  return expected === actual
+}
+
 /**
  * Compare parameters with optional parameter support
  */
@@ -65,6 +119,7 @@ function compareParametersWithOptional(
   for (const [key, expectedValue] of Object.entries(expectedParams)) {
     const actualValue = actualParams[key]
     const isOptional = isParameterOptional(expectedValue)
+    const isCaseInsensitive = isParameterCaseInsensitive(expectedValue)
     const normalizedExpectedValue = getParameterValue(expectedValue)
 
     // If parameter is missing
@@ -78,7 +133,11 @@ function compareParametersWithOptional(
     }
 
     // Parameter is present, check if values match
-    if (!isEqual(normalizedExpectedValue, actualValue)) {
+    const valuesMatch = isCaseInsensitive
+      ? compareValuesCaseInsensitive(normalizedExpectedValue, actualValue)
+      : isEqual(normalizedExpectedValue, actualValue)
+
+    if (!valuesMatch) {
       return false
     }
   }
@@ -88,7 +147,8 @@ function compareParametersWithOptional(
 
 /**
  * Canonicalize tool usage object by sorting parameters and standardizing format
- * This ensures that parameter order doesn't affect comparison results
+ * This ensures that parameter order doesn't affect comparison results and
+ * extracts actual values from enhanced parameter configurations
  */
 function canonicalizeToolUsage(toolUsage: any): any {
   if (!toolUsage || typeof toolUsage !== 'object') {
@@ -97,7 +157,7 @@ function canonicalizeToolUsage(toolUsage: any): any {
 
   const canonicalized = { ...toolUsage }
 
-  // If parameters exist, sort them by key
+  // If parameters exist, sort them by key and extract values from enhanced configs
   if (
     canonicalized.parameters &&
     typeof canonicalized.parameters === 'object'
@@ -106,7 +166,9 @@ function canonicalizeToolUsage(toolUsage: any): any {
     Object.keys(canonicalized.parameters)
       .sort()
       .forEach((key) => {
-        sortedParams[key] = canonicalized.parameters[key]
+        // Extract the actual value from enhanced parameter config
+        const paramValue = canonicalized.parameters[key]
+        sortedParams[key] = getParameterValue(paramValue)
       })
     canonicalized.parameters = sortedParams
   }
@@ -241,12 +303,12 @@ export class TestManager {
       )
       const apiProvider = this._createApiProvider(provider, modelName)
 
-      // Step 1: Get model response and parse XML
+      // Step 1: Get model response and parse JSON
       const modelResponse = await apiProvider.createMessage(
         systemPrompt,
         testCase.prompt,
       )
-      const parsedResponse = await parseXml(modelResponse.trim())
+      const parsedResponse = parseJson(modelResponse.trim())
 
       // Step 2: Validate tool usage format (always required)
       // Support backward compatibility: check expectedToolUsage first, then expectedOutput
@@ -267,7 +329,7 @@ export class TestManager {
         canonicalExpected.serverName === canonicalActual.serverName &&
         canonicalExpected.toolName === canonicalActual.toolName &&
         compareParametersWithOptional(
-          canonicalExpected.parameters || {},
+          expectedToolUsage.parameters || {},
           canonicalActual.parameters || {},
         )
 
@@ -377,7 +439,6 @@ Please provide a helpful, natural language response to the user based on these r
         anyTestRequiresExecution,
       )
 
-      console.log('Server Tools:', JSON.stringify(serverTools))
       const systemPrompt = SYSTEM_PROMPT(serverTools)
 
       const totalIterations = this._getTotalIterations()
