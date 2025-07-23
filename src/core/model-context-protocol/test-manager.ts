@@ -27,6 +27,66 @@ import { TableFormatter } from '../../utilities/table-formatter'
 import { GradingService } from '../../utilities/grading-service'
 
 /**
+ * Check if a parameter value is an enhanced parameter config with optional support
+ */
+function isParameterConfig(
+  value: any,
+): value is { value: any; optional?: boolean } {
+  return (
+    value &&
+    typeof value === 'object' &&
+    'value' in value &&
+    typeof value.optional === 'boolean'
+  )
+}
+
+/**
+ * Extract the actual value from a parameter, handling both simple values and enhanced configs
+ */
+function getParameterValue(param: any): any {
+  return isParameterConfig(param) ? param.value : param
+}
+
+/**
+ * Check if a parameter is marked as optional
+ */
+function isParameterOptional(param: any): boolean {
+  return isParameterConfig(param) && param.optional === true
+}
+
+/**
+ * Compare parameters with optional parameter support
+ */
+function compareParametersWithOptional(
+  expectedParams: Record<string, any>,
+  actualParams: Record<string, any>,
+): boolean {
+  // Check that all required parameters are present and match
+  for (const [key, expectedValue] of Object.entries(expectedParams)) {
+    const actualValue = actualParams[key]
+    const isOptional = isParameterOptional(expectedValue)
+    const normalizedExpectedValue = getParameterValue(expectedValue)
+
+    // If parameter is missing
+    if (actualValue === undefined) {
+      // Missing required parameter is a failure
+      if (!isOptional) {
+        return false
+      }
+      // Missing optional parameter is okay, continue
+      continue
+    }
+
+    // Parameter is present, check if values match
+    if (!isEqual(normalizedExpectedValue, actualValue)) {
+      return false
+    }
+  }
+
+  return true
+}
+
+/**
  * Canonicalize tool usage object by sorting parameters and standardizing format
  * This ensures that parameter order doesn't affect comparison results
  */
@@ -201,7 +261,15 @@ export class TestManager {
       // Canonicalize both expected and actual tool usage for comparison
       const canonicalExpected = canonicalizeToolUsage(expectedToolUsage)
       const canonicalActual = canonicalizeToolUsage(parsedResponse)
-      const toolUsagePassed = isEqual(canonicalExpected, canonicalActual)
+
+      // Compare with optional parameter support
+      const toolUsagePassed =
+        canonicalExpected.serverName === canonicalActual.serverName &&
+        canonicalExpected.toolName === canonicalActual.toolName &&
+        compareParametersWithOptional(
+          canonicalExpected.parameters || {},
+          canonicalActual.parameters || {},
+        )
 
       // Step 3: Execute tool if enabled OR if expectedResults are defined (which requires execution)
       const shouldExecuteTools =
@@ -308,6 +376,8 @@ Please provide a helpful, natural language response to the user based on these r
       const serverTools = await this._mcpHub.listAllServerTools(
         anyTestRequiresExecution,
       )
+
+      console.log('Server Tools:', JSON.stringify(serverTools))
       const systemPrompt = SYSTEM_PROMPT(serverTools)
 
       const totalIterations = this._getTotalIterations()

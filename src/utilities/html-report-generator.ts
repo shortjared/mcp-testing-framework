@@ -1132,6 +1132,47 @@ export class HtmlReportGenerator {
   }
 
   /**
+   * Check if a parameter value is an enhanced parameter config with optional support
+   */
+  private _isParameterConfig(
+    value: any,
+  ): value is { value: any; optional?: boolean } {
+    return (
+      value &&
+      typeof value === 'object' &&
+      'value' in value &&
+      typeof value.optional === 'boolean'
+    )
+  }
+
+  /**
+   * Extract the actual value from a parameter, handling both simple values and enhanced configs
+   */
+  private _getParameterValue(param: any): any {
+    return this._isParameterConfig(param) ? param.value : param
+  }
+
+  /**
+   * Check if a parameter is marked as optional
+   */
+  private _isParameterOptional(param: any): boolean {
+    return this._isParameterConfig(param) && param.optional === true
+  }
+
+  /**
+   * Normalize parameters by extracting values from enhanced configs
+   */
+  private _normalizeParameters(
+    parameters: Record<string, any>,
+  ): Record<string, any> {
+    const normalized: Record<string, any> = {}
+    for (const [key, value] of Object.entries(parameters)) {
+      normalized[key] = this._getParameterValue(value)
+    }
+    return normalized
+  }
+
+  /**
    * Canonicalize tool usage object by sorting parameters and standardizing format
    */
   private _canonicalizeToolUsage(toolUsage: any): any {
@@ -1141,16 +1182,19 @@ export class HtmlReportGenerator {
 
     const canonicalized = { ...toolUsage }
 
-    // If parameters exist, sort them by key
+    // If parameters exist, normalize and sort them by key
     if (
       canonicalized.parameters &&
       typeof canonicalized.parameters === 'object'
     ) {
+      const normalizedParams = this._normalizeParameters(
+        canonicalized.parameters,
+      )
       const sortedParams: any = {}
-      Object.keys(canonicalized.parameters)
+      Object.keys(normalizedParams)
         .sort()
         .forEach((key) => {
-          sortedParams[key] = canonicalized.parameters[key]
+          sortedParams[key] = normalizedParams[key]
         })
       canonicalized.parameters = sortedParams
     }

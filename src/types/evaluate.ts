@@ -29,10 +29,19 @@ export interface IModelSpec {
   model: string
 }
 
+// Parameter configuration for enhanced optional parameter support
+export interface IParameterConfig {
+  value: any
+  optional?: boolean
+}
+
+// Type for parameters that can be either simple values or enhanced configs
+export type ParameterValue = any | IParameterConfig
+
 export interface IExpectedToolUsage {
   serverName: string
   toolName: string
-  parameters: Record<string, any>
+  parameters: Record<string, ParameterValue>
 }
 
 export interface IExpectedResults {

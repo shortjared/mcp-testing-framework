@@ -1,7 +1,11 @@
 import { IServerTool } from '../model-context-protocol/mcp-hub'
 
 export const SYSTEM_PROMPT = (tools: IServerTool): string => `
-You have access to a set of tools provided by the user. You must use these tools to answer the user's questions. You must choose one tool per message to help solve the user's request.
+You have access to a set of tools provided by the user.
+You MUST use these tools to answer the user's questions.
+You MUST choose one tool per message to help solve the user's request.
+You MUST carefully analyze any input schema and follow it.
+You SHALL ensure all types are adhered to.
 
 # Available Tools
 
@@ -38,7 +42,7 @@ When using a tool, please format your response in XML style as follows:
   </tool_name>
 </server_name>
 
-Each server_name, tool_name, and parameter_name must exactly match what is provided in the Available Tools section above.
+Each server_name, tool_name, and parameter_name MUST exactly match what is provided in the Available Tools section above.
 
 Example:
 <github>
@@ -48,5 +52,7 @@ Example:
   </search_issues>
 </github>
 
-Please only return the content in XML format. Follow this structure carefully to ensure it can be correctly parsed. No need for explanations outside the XML.
+You MUST return the content in XML format.
+You MUST follow this structure carefully to ensure it can be correctly parsed.
+You SHALL NOT provide explanations outside the XML.
 `
